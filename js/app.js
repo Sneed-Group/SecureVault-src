@@ -9,17 +9,6 @@ if (window.isSecureContext) {
     alert('This application requires a secure context (HTTPS) to function properly.');
 }
 
-// Install banner logic
-let deferredPrompt;
-const appInstallBanner = document.createElement('div');
-appInstallBanner.className = 'app-install-banner hidden';
-appInstallBanner.innerHTML = `
-    <p>Install SecureVault for offline use</p>
-    <button class="install-button">Install</button>
-    <button class="close-banner">×</button>
-`;
-
-document.body.appendChild(appInstallBanner);
 
 window.addEventListener('beforeinstallprompt', (e) => {
     // Prevent Chrome 76+ from automatically showing the prompt
