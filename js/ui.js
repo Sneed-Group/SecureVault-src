@@ -216,7 +216,7 @@ class SecureVaultUI {
         const password = this.decryptPassword.value;
         const filesSelected = this.selectedDecryptFiles.length > 0;
         
-        this.decryptButton.disabled = !filesSelected || !password;
+        // this.decryptButton.disabled = !filesSelected || !password; // BUGSBUG: fix bug where decrypt button doesnt unlock!
     }
     
     async startEncryption() {
