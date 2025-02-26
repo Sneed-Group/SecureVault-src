@@ -19,26 +19,26 @@ window.addEventListener('beforeinstallprompt', (e) => {
     appInstallBanner.classList.remove('hidden');
 });
 
-document.querySelector('.install-button').addEventListener('click', () => {
+//document.querySelector('.install-button').addEventListener('click', () => {
     // Hide the app install banner
-    appInstallBanner.classList.add('hidden');
+    //appInstallBanner.classList.add('hidden');
     // Show the install prompt
-    deferredPrompt.prompt();
+    //deferredPrompt.prompt();
     // Wait for the user to respond to the prompt
-    deferredPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === 'accepted') {
-            console.log('User accepted the install prompt');
-        } else {
-            console.log('User dismissed the install prompt');
-        }
+    //deferredPrompt.userChoice.then((choiceResult) => {
+        //if (choiceResult.outcome === 'accepted') {
+            //console.log('User accepted the install prompt');
+        //} else {
+            //console.log('User dismissed the install prompt');
+        //}
         // Clear the saved prompt since it can't be used again
-        deferredPrompt = null;
-    });
-});
+        //deferredPrompt = null;
+    //});
+//});
 
-document.querySelector('.close-banner').addEventListener('click', () => {
-    appInstallBanner.classList.add('hidden');
-});
+//document.querySelector('.close-banner').addEventListener('click', () => {
+//    appInstallBanner.classList.add('hidden');
+//});
 
 // Handle file sharing from other apps (when PWA is installed)
 if (navigator.share) {
