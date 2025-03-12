@@ -79,8 +79,16 @@ const UIService = {
     });
 
     // Initialize Markdown editor
-    if (!MarkdownService.editor) {
-      MarkdownService.initEditor(document.getElementById("editor-container"));
+    if (
+      !MarkdownService.editor &&
+      document.getElementById("editor-container")
+    ) {
+      setTimeout(() => {
+        const editorContainer = document.getElementById("editor-container");
+        if (editorContainer) {
+          MarkdownService.initEditor(editorContainer);
+        }
+      }, 100); // Small delay to ensure DOM is ready
     }
   },
 
@@ -197,7 +205,7 @@ const UIService = {
   /**
    * Switch between sections (docs, photos, files)
    */
-  switchSection(section) {
+  switchSection: function (section) {
     if (!["docs", "photos", "files"].includes(section)) {
       console.error("Invalid section:", section);
       return;
@@ -223,6 +231,18 @@ const UIService = {
       editorSection.classList.remove("hidden");
       previewSection.classList.add("hidden");
       uploadSection.classList.add("hidden");
+
+      // Re-initialize editor if needed
+      if (
+        !MarkdownService.editor &&
+        document.getElementById("editor-container")
+      ) {
+        setTimeout(() => {
+          MarkdownService.initEditor(
+            document.getElementById("editor-container"),
+          );
+        }, 100);
+      }
     } else {
       editorSection.classList.add("hidden");
       previewSection.classList.remove("hidden");

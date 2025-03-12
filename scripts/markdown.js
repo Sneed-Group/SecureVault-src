@@ -1,3 +1,4 @@
+// kryptor/scripts/markdown.js - Updated version
 const MarkdownService = {
   editor: null,
 
@@ -5,33 +6,43 @@ const MarkdownService = {
    * Initialize the markdown editor
    */
   initEditor: function (element) {
-    this.editor = new EasyMDE({
-      element: element,
-      spellChecker: false,
-      autofocus: true,
-      toolbar: [
-        "bold",
-        "italic",
-        "heading",
-        "|",
-        "quote",
-        "unordered-list",
-        "ordered-list",
-        "|",
-        "link",
-        "image",
-        "|",
-        "preview",
-        "side-by-side",
-        "fullscreen",
-        "|",
-        "guide",
-      ],
-      placeholder: "Write something amazing...",
-      status: ["lines", "words", "cursor"],
-    });
+    if (!element) {
+      console.error("Element for editor initialization is missing");
+      return null;
+    }
 
-    return this.editor;
+    try {
+      this.editor = new EasyMDE({
+        element: element,
+        spellChecker: false,
+        autofocus: true,
+        toolbar: [
+          "bold",
+          "italic",
+          "heading",
+          "|",
+          "quote",
+          "unordered-list",
+          "ordered-list",
+          "|",
+          "link",
+          "image",
+          "|",
+          "preview",
+          "side-by-side",
+          "fullscreen",
+          "|",
+          "guide",
+        ],
+        placeholder: "Write something amazing...",
+        status: ["lines", "words", "cursor"],
+      });
+
+      return this.editor;
+    } catch (error) {
+      console.error("Error initializing Markdown editor:", error);
+      return null;
+    }
   },
 
   /**
