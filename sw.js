@@ -1,55 +1,70 @@
-// sw.js
-// =====
-// Service Worker for offline capabilities
-
-const CACHE_NAME = 'securevault-v1';
-const ASSETS = [
-  '/',
-  '/index.html',
-  '/css/styles.css',
-  '/js/app.js',
-  '/js/crypto.js',
-  '/js/ui.js',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+const CACHE_NAME = "markdown-vault-v1";
+const urlsToCache = [
+  "/",
+  "/index.html",
+  "/styles.css",
+  "/scripts/app.js",
+  "/scripts/encryption.js",
+  "/scripts/db.js",
+  "/scripts/markdown.js",
+  "/scripts/ui.js",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css",
+  "https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js",
+  "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
 ];
 
-// Install event - cache all static assets
-self.addEventListener('install', event => {
+// Install event
+self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        return cache.addAll(ASSETS);
-      })
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log("Opened cache");
+      return cache.addAll(urlsToCache);
+    }),
+  );
+});
+
+// Fetch event
+self.addEventListener("fetch", (event) => {
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      // Cache hit - return response
+      if (response) {
+        return response;
+      }
+      return fetch(event.request).then((response) => {
+        // Check if we received a valid response
+        if (!response || response.status !== 200 || response.type !== "basic") {
+          return response;
+        }
+
+        // Clone the response
+        const responseToCache = response.clone();
+
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseToCache);
+        });
+
+        return response;
+      });
+    }),
   );
 });
 
 // Activate event - clean up old caches
-self.addEventListener('activate', event => {
+self.addEventListener("activate", (event) => {
+  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
-    caches.keys().then(keyList => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        keyList.map(key => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
+        cacheNames.map((cacheName) => {
+          if (cacheWhitelist.indexOf(cacheName) === -1) {
+            return caches.delete(cacheName);
           }
-        })
+        }),
       );
-    })
-  );
-  return self.clients.claim();
-});
-
-// Fetch event - serve from cache if available, otherwise fetch from network
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      })
+    }),
   );
 });

@@ -1,104 +1,97 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2196f3">
-    <title>SecureVault - File Encryption</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
-</head>
-<body>
-    <header>
-        <h1>SecureVault</h1>
-        <p>End-to-end File Encryption</p>
-    </header>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Markdown Vault</title>
+        <link rel="stylesheet" href="styles.css" />
+        <link rel="manifest" href="manifest.json" />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"
+        />
+        <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    </head>
+    <body>
+        <div id="app">
+            <header>
+                <h1>SecureVault</h1>
+                <div id="auth-controls">
+                    <div id="not-logged-in">
+                        <input
+                            type="password"
+                            id="password"
+                            placeholder="Password"
+                        />
+                        <button id="unlock-btn">Unlock Vault</button>
+                        <button id="create-vault-btn">Create New Vault</button>
+                    </div>
+                    <div id="logged-in" style="display: none">
+                        <button id="lock-btn">Lock Vault</button>
+                        <button id="export-btn">Export Vault</button>
+                        <button id="import-btn">Import Vault</button>
+                        <input
+                            type="file"
+                            id="import-file"
+                            style="display: none"
+                        />
+                    </div>
+                </div>
+            </header>
 
-    <main>
-        <div class="container">
-            <div class="tabs">
-                <button class="tab-btn active" data-tab="encrypt">Encrypt</button>
-                <button class="tab-btn" data-tab="decrypt">Decrypt</button>
-            </div>
+            <div id="main-content" style="display: none">
+                <nav>
+                    <div class="tabs">
+                        <button class="tab-btn active" data-section="docs">
+                            Docs
+                        </button>
+                        <button class="tab-btn" data-section="photos">
+                            Photos
+                        </button>
+                        <button class="tab-btn" data-section="files">
+                            Files
+                        </button>
+                    </div>
+                    <div id="file-list"></div>
+                    <button id="new-file-btn">+ New Item</button>
+                </nav>
 
-            <div id="encrypt" class="tab-content active">
-                <div class="drop-area" id="encrypt-drop-area">
-                    <p>Drag files or folders here</p>
-                    <p>or</p>
-                    <label class="file-input-label">
-                        Browse Files
-                        <input type="file" id="encrypt-file-input" multiple webkitdirectory directory>
-                    </label>
-                </div>
-                
-                <div id="encrypt-file-list" class="file-list"></div>
-                
-                <div class="password-section">
-                    <label for="encrypt-password">Password:</label>
-                    <input type="password" id="encrypt-password" placeholder="Enter a strong password">
-                    <label for="encrypt-confirm-password">Confirm Password:</label>
-                    <input type="password" id="encrypt-confirm-password" placeholder="Confirm your password">
-                    <div class="password-strength" id="password-strength"></div>
-                </div>
-                
-                <button id="encrypt-button" class="action-button" disabled>Encrypt Files</button>
-            </div>
+                <div class="content-area">
+                    <div id="editor-section">
+                        <div id="file-toolbar">
+                            <input
+                                type="text"
+                                id="file-title"
+                                placeholder="Untitled"
+                            />
+                            <button id="save-btn">Save</button>
+                            <button id="delete-btn">Delete</button>
+                        </div>
+                        <div id="editor-container"></div>
+                    </div>
 
-            <div id="decrypt" class="tab-content">
-                <div class="drop-area" id="decrypt-drop-area">
-                    <p>Drag encrypted files here</p>
-                    <p>or</p>
-                    <label class="file-input-label">
-                        Browse Files
-                        <input type="file" id="decrypt-file-input" multiple accept=".enc">
-                    </label>
+                    <div id="preview-section" class="hidden">
+                        <div id="preview-content"></div>
+                    </div>
+
+                    <div id="upload-section" class="hidden">
+                        <div id="drop-area">
+                            <p>Drag & drop files here or</p>
+                            <input type="file" id="file-input" />
+                            <label for="file-input">Choose files</label>
+                        </div>
+                        <div id="file-preview"></div>
+                    </div>
                 </div>
-                
-                <div id="decrypt-file-list" class="file-list"></div>
-                
-                <div class="password-section">
-                    <label for="decrypt-password">Password:</label>
-                    <input type="password" id="decrypt-password" placeholder="Enter your password">
-                </div>
-                
-                <button id="decrypt-button" class="action-button">Decrypt Files</button>
             </div>
         </div>
 
-        <div id="progress-container" class="hidden">
-            <div class="progress-bar-container">
-                <div id="progress-bar" class="progress-bar"></div>
-            </div>
-            <p id="progress-text">Processing...</p>
-            <button id="cancel-button">Cancel</button>
-        </div>
-
-        <div id="result-container" class="hidden">
-            <h3>Operation Complete</h3>
-            <div id="result-list"></div>
-            <button id="download-all-button">Download All</button>
-            <button id="clear-button">Clear</button>
-        </div>
-    </main>
-
-    <footer>
-        <p>Your files never leave your device. All encryption and decryption happens locally.</p>
-        <p>For true security, use a strong, unique password.</p>
-    </footer>
-
-    <script src="js/crypto.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/app.js"></script>
-    <script>
-        // Register service worker
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('Service Worker registered'))
-                    .catch(err => console.log('Service Worker registration failed', err));
-            });
-        }
-    </script>
-</body>
+        <script src="scripts/encryption.js"></script>
+        <script src="scripts/db.js"></script>
+        <script src="scripts/markdown.js"></script>
+        <script src="scripts/ui.js"></script>
+        <script src="scripts/app.js"></script>
+    </body>
 </html>
