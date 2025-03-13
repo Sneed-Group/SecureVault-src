@@ -9,7 +9,7 @@ import {
 } from './database.js';
 
 // Auth Event system
-const AUTH_EVENTS = {
+export const AUTH_EVENTS = {
   LOGIN: 'auth:login',
   LOGOUT: 'auth:logout',
   REGISTER: 'auth:register',
@@ -216,32 +216,29 @@ export async function importDatabaseWithPassword(file, password) {
 export function initializeAuth() {
   const authScreen = document.getElementById('auth-screen');
   const mainScreen = document.getElementById('main-screen');
-  const authForm = document.getElementById('auth-form');
+  const passwordForm = document.getElementById('password-form');
   const passwordInput = document.getElementById('password');
-  const loginBtn = document.getElementById('login-btn');
-  const createAccountBtn = document.getElementById('create-account-btn');
-  const importVaultBtn = document.getElementById('import-vault-btn');
-  const fileInput = document.getElementById('import-file');
+  const confirmPasswordInput = document.getElementById('confirm-password');
+  const unlockBtn = document.getElementById('unlock-btn');
+  const importDbBtn = document.getElementById('import-db-btn');
+  const newUserFields = document.getElementById('new-user-fields');
   const messageContainer = document.getElementById('auth-message');
+  const importFileInput = document.getElementById('import-file-input');
   
   // Check if user exists
   const hasUser = userExists();
   
-  // Show/hide appropriate buttons
+  // Show/hide appropriate fields
   if (hasUser) {
-    loginBtn.style.display = 'block';
-    createAccountBtn.style.display = 'none';
-    document.getElementById('auth-title').textContent = 'Unlock Your Vault';
-    document.getElementById('auth-subtitle').textContent = 'Enter your password to continue';
+    unlockBtn.textContent = 'Unlock Vault';
+    newUserFields.style.display = 'none';
   } else {
-    loginBtn.style.display = 'none';
-    createAccountBtn.style.display = 'block';
-    document.getElementById('auth-title').textContent = 'Create Your Vault';
-    document.getElementById('auth-subtitle').textContent = 'Set a strong password to secure your data';
+    unlockBtn.textContent = 'Create Vault';
+    newUserFields.style.display = 'block';
   }
   
-  // Handle login button click
-  loginBtn.addEventListener('click', (e) => {
+  // Handle unlock/create button click
+  unlockBtn.addEventListener('click', (e) => {
     e.preventDefault();
     
     const password = passwordInput.value.trim();
@@ -251,75 +248,129 @@ export function initializeAuth() {
       return;
     }
     
-    const authenticated = authenticateUser(password);
-    
-    if (authenticated) {
-      authScreen.classList.remove('active');
-      mainScreen.classList.add('active');
-      passwordInput.value = '';
+    if (hasUser) {
+      // Login existing user
+      const authenticated = authenticateUser(password);
+      
+      if (authenticated) {
+        authScreen.classList.remove('active');
+        mainScreen.classList.add('active');
+        passwordInput.value = '';
+      } else {
+        showAuthMessage('Invalid password', 'error');
+      }
     } else {
-      showAuthMessage('Invalid password', 'error');
+      // Create new user
+      const confirmPassword = confirmPasswordInput.value.trim();
+      
+      if (password.length < 8) {
+        showAuthMessage('Password must be at least 8 characters', 'error');
+        return;
+      }
+      
+      if (password !== confirmPassword) {
+        showAuthMessage('Passwords do not match', 'error');
+        return;
+      }
+      
+      const created = createUser(password);
+      
+      if (created) {
+        authScreen.classList.remove('active');
+        mainScreen.classList.add('active');
+        passwordInput.value = '';
+        confirmPasswordInput.value = '';
+      } else {
+        showAuthMessage('Error creating vault', 'error');
+      }
     }
   });
   
-  // Handle create account button click
-  createAccountBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    
-    const password = passwordInput.value.trim();
-    
-    if (!password) {
-      showAuthMessage('Please enter a password', 'error');
-      return;
-    }
-    
-    if (password.length < 8) {
-      showAuthMessage('Password must be at least 8 characters', 'error');
-      return;
-    }
-    
-    const created = createUser(password);
-    
-    if (created) {
-      authScreen.classList.remove('active');
-      mainScreen.classList.add('active');
-      passwordInput.value = '';
-      showAuthMessage('Account created successfully', 'success');
-    } else {
-      showAuthMessage('Error creating account', 'error');
-    }
-  });
+  // Handle import database button click
+  if (importDbBtn) {
+    importDbBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      
+      // If we have an import file input, trigger it
+      if (importFileInput) {
+        importFileInput.click();
+      } else {
+        showAuthMessage('Import functionality not available', 'error');
+      }
+    });
+  }
   
-  // Handle import vault button click
-  importVaultBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    fileInput.click();
-  });
+  // Handle file input change (if present)
+  if (importFileInput) {
+    importFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      
+      if (!file) return;
+      
+      // Show password modal for importing
+      const importModal = document.getElementById('import-modal');
+      if (importModal) {
+        importModal.classList.add('active');
+        
+        // Store the file reference for later use
+        importFileInput._selectedFile = file;
+      } else {
+        // If no modal exists, proceed with direct password prompt
+        const password = passwordInput.value.trim();
+        
+        if (!password) {
+          showAuthMessage('Please enter a password for the imported vault', 'error');
+          return;
+        }
+        
+        const imported = await importDatabaseWithPassword(file, password);
+        
+        if (imported) {
+          authScreen.classList.remove('active');
+          mainScreen.classList.add('active');
+          passwordInput.value = '';
+          showAuthMessage('Vault imported successfully', 'success');
+        } else {
+          showAuthMessage('Error importing vault', 'error');
+        }
+      }
+    });
+  }
   
-  // Handle file input change
-  fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    
-    if (!file) return;
-    
-    const password = passwordInput.value.trim();
-    
-    if (!password) {
-      showAuthMessage('Please enter a password', 'error');
-      return;
-    }
-    
-    const imported = await importDatabaseWithPassword(file, password);
-    
-    if (imported) {
-      authScreen.classList.remove('active');
-      mainScreen.classList.add('active');
-      passwordInput.value = '';
-      showAuthMessage('Vault imported successfully', 'success');
-    } else {
-      showAuthMessage('Error importing vault', 'error');
-    }
-  });
+  // Handle import confirmation
+  const importConfirmBtn = document.getElementById('import-confirm-btn');
+  if (importConfirmBtn) {
+    importConfirmBtn.addEventListener('click', async () => {
+      const importModal = document.getElementById('import-modal');
+      const importPassword = document.getElementById('import-password');
+      const file = importFileInput._selectedFile;
+      
+      if (!file) {
+        showAuthMessage('No file selected', 'error');
+        importModal.classList.remove('active');
+        return;
+      }
+      
+      const password = importPassword.value.trim();
+      
+      if (!password) {
+        showAuthMessage('Please enter a password', 'error');
+        return;
+      }
+      
+      const imported = await importDatabaseWithPassword(file, password);
+      
+      if (imported) {
+        importModal.classList.remove('active');
+        authScreen.classList.remove('active');
+        mainScreen.classList.add('active');
+        importPassword.value = '';
+        showAuthMessage('Vault imported successfully', 'success');
+      } else {
+        showAuthMessage('Error importing vault', 'error');
+      }
+    });
+  }
   
   // Listen for auth events
   window.addEventListener(AUTH_EVENTS.LOGIN, () => {

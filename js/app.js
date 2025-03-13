@@ -22,6 +22,9 @@ const appState = {
 export function initializeApp() {
   console.log('Initializing app...');
   
+  // Load preferences first
+  loadPreferences();
+  
   // Initialize authentication first
   initializeAuth();
   
@@ -48,7 +51,8 @@ export function initializeApp() {
   
   window.addEventListener(AUTH_EVENTS.LOGOUT, () => {
     console.log('Logout event detected, shutting down app components...');
-    // Any cleanup needed for components on logout
+    closeDatabase();
+    // Show auth screen - handled in auth.js
   });
 }
 

@@ -33,6 +33,7 @@
           <div class="form-actions">
             <button id="unlock-btn" class="btn primary">Unlock Vault</button>
             <button id="import-db-btn" class="btn secondary">Import Database</button>
+            <input type="file" id="import-file-input" style="display:none;" accept=".json">
           </div>
           <p id="auth-message" class="message"></p>
         </div>
@@ -137,6 +138,26 @@
           </div>
         </section>
       </main>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="import-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Import Vault</h2>
+          <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Enter the password for this vault:</p>
+          <div class="form-group">
+            <input type="password" id="import-password" placeholder="Vault password">
+          </div>
+          <div class="form-actions">
+            <button id="import-confirm-btn" class="btn primary">Import</button>
+            <button class="btn secondary close-modal">Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Settings Modal -->
