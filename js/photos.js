@@ -20,16 +20,7 @@ export function initializePhotoManager(appState) {
   const photosContainer = document.getElementById('photos-container');
   const viewOptions = document.querySelectorAll('.view-option');
   
-  // Load database from localStorage - temporary solution until fully migrated to secure database
-  try {
-    const savedData = localStorage.getItem('markdown_vault_data');
-    if (savedData) {
-      db = JSON.parse(savedData);
-      console.log('Loaded data from localStorage for photos');
-    }
-  } catch (error) {
-    console.error('Error loading data from localStorage for photos:', error);
-  }
+
   
   // Initialize database structure if needed
   if (!db) {
@@ -111,9 +102,6 @@ async function uploadPhotos(fileList) {
   
   // Save to database
   try {
-    // First, save to localStorage as a fallback
-    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
-    
     // Then encrypt and save to secure storage if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
