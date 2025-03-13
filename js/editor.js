@@ -1,6 +1,6 @@
 // Import dependencies
 import { marked } from 'marked';
-import { saveDatabase } from './database.js';
+import { saveDatabase, encryptData, getEncryptionKey, saveToSecureStorage } from './database.js';
 import { showNotification, refreshFileList } from './ui.js';
 import hljs from 'highlight.js';
 
@@ -54,7 +54,12 @@ export function initializeEditor(appState) {
   
   // Initialize the database structure if needed
   if (!db) {
-    db = { docs: {} };
+    db = {};
+  }
+  
+  // Initialize documents section if needed
+  if (!db.docs) {
+    db.docs = {};
   }
   
   // Update the file list
@@ -233,59 +238,41 @@ function applyFormat(format) {
   isEditorDirty = true;
 }
 
-// Save the current file
+/**
+ * Save the current file
+ */
 async function saveCurrentFile() {
-  console.log('Saving current file...');
-  const editor = document.getElementById('markdown-editor');
-  const fileList = document.getElementById('file-list');
-  
-  if (!editor) {
-    console.error('Editor not found');
+  if (!currentFile) {
+    console.error('No file selected');
+    showNotification('No file selected to save', 'error');
     return false;
   }
   
-  if (!db) {
+  if (!db || !db.docs) {
     console.error('Database not initialized');
-    db = { docs: {} };
+    showNotification('Error: Database not initialized', 'error');
+    return false;
   }
   
   try {
-    // If no current file, create a new one
-    if (!currentFile) {
-      console.log('Creating new file...');
-      
-      // Prompt for a file name
-      const fileName = prompt('Enter a name for your document:', 'Untitled Document');
-      if (!fileName) {
-        console.log('File name not provided, aborting save');
-        return false;
+    const editor = document.getElementById('markdown-editor');
+    if (!editor) return false;
+    
+    const content = editor.value;
+    
+    // Update the document in the database
+    currentFile.content = content;
+    currentFile.modified = new Date().toISOString();
+    db.docs[currentFile.id] = currentFile;
+    
+    // Save to secure storage if encryption key is available
+    const encryptionKey = getEncryptionKey();
+    if (encryptionKey) {
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        await saveDatabase();
+        console.log('Saved to secure database');
       }
-      
-      currentFile = {
-        id: generateId(),
-        name: fileName,
-        type: 'markdown',
-        content: editor.value,
-        created: new Date().toISOString(),
-        modified: new Date().toISOString()
-      };
-      
-      console.log('New file created:', currentFile);
-      
-      // Add to database
-      if (!db.docs) {
-        db.docs = {};
-      }
-      
-      db.docs[currentFile.id] = currentFile;
-    } else {
-      console.log('Updating existing file:', currentFile.id);
-      // Update existing file
-      currentFile.content = editor.value;
-      currentFile.modified = new Date().toISOString();
-      
-      // Update in database
-      db.docs[currentFile.id] = currentFile;
     }
     
     // Save to localStorage (temporary solution until we implement proper saving)
@@ -294,23 +281,17 @@ async function saveCurrentFile() {
       console.log('Saved to localStorage');
     } catch (localStorageError) {
       console.error('Failed to save to localStorage:', localStorageError);
+      // Continue anyway as we've already saved to secure database
     }
     
-    // Clear dirty flag
+    // Reset dirty flag
     isEditorDirty = false;
     
-    // Update file list
-    refreshFileList(
-      db.docs,
-      fileList,
-      selectFile,
-      confirmDeleteFile
-    );
+    // Update UI
+    document.getElementById('save-btn').classList.remove('dirty');
     
-    // Show notification
-    showNotification('Document saved successfully', 'success');
+    showNotification('Document saved', 'success');
     
-    console.log('File saved successfully');
     return true;
   } catch (error) {
     console.error('Failed to save document:', error);
@@ -319,34 +300,88 @@ async function saveCurrentFile() {
   }
 }
 
-// Create a new document
+/**
+ * Create a new document
+ */
 function createNewDocument() {
-  console.log('Creating new document...');
-  // Check for unsaved changes
+  // Check if there are unsaved changes
   if (isEditorDirty) {
-    if (!confirm('You have unsaved changes. Create a new document anyway?')) {
-      return;
+    const confirmLeave = confirm('You have unsaved changes. Do you want to discard them?');
+    if (!confirmLeave) {
+      return false;
     }
   }
   
-  // Clear editor
+  // Clear the editor
   const editor = document.getElementById('markdown-editor');
+  const preview = document.getElementById('preview');
+  
   if (editor) {
     editor.value = '';
   }
   
-  // Clear current file
-  currentFile = null;
+  if (preview) {
+    preview.innerHTML = '';
+  }
   
-  // Clear dirty flag
-  isEditorDirty = false;
+  // Prompt for document name
+  const name = prompt('Enter a name for your new document:');
+  if (!name) {
+    return false; // User cancelled
+  }
   
-  // Clear active file in list
-  document.querySelectorAll('.file-item').forEach(item => {
-    item.classList.remove('active');
-  });
+  // Create a new document object
+  const newDoc = {
+    id: generateId(),
+    name: name,
+    type: 'markdown',
+    content: '',
+    created: new Date().toISOString(),
+    modified: new Date().toISOString()
+  };
   
-  console.log('New document created');
+  // Set as current file
+  currentFile = newDoc;
+  
+  // Save to database
+  if (!db) {
+    db = {};
+  }
+  
+  if (!db.docs) {
+    db.docs = {};
+  }
+  
+  db.docs[newDoc.id] = newDoc;
+  
+  // Save to secure storage if encryption key is available
+  const encryptionKey = getEncryptionKey();
+  if (encryptionKey) {
+    const encrypted = encryptData(db);
+    if (encrypted) {
+      saveDatabase();
+      console.log('New document saved to secure database');
+    }
+  }
+  
+  // Save to localStorage
+  try {
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    console.log('New document saved to localStorage');
+  } catch (error) {
+    console.error('Failed to save new document to localStorage:', error);
+    // Continue anyway as we've already saved to secure database
+  }
+  
+  // Update the UI
+  document.getElementById('file-title').textContent = name;
+  
+  // Update file list
+  refreshFileList();
+  
+  showNotification('New document created', 'success');
+  
+  return true;
 }
 
 // Select a file to edit
@@ -393,49 +428,53 @@ function confirmDeleteFile(file) {
   }
 }
 
-// Delete a file
+/**
+ * Delete the current file
+ */
 async function deleteFile(file) {
-  console.log('Deleting file:', file);
+  if (!file || !file.id) {
+    console.error('Invalid file to delete');
+    showNotification('Error: Invalid file to delete', 'error');
+    return false;
+  }
+  
   try {
-    // If this is the current file, clear the editor
-    if (currentFile && currentFile.id === file.id) {
-      const editor = document.getElementById('markdown-editor');
-      if (editor) {
-        editor.value = '';
+    // Remove from database
+    delete db.docs[file.id];
+    
+    // Save to secure storage if encryption key is available
+    const encryptionKey = getEncryptionKey();
+    if (encryptionKey) {
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        await saveDatabase();
+        console.log('Database saved to secure storage after deletion');
       }
-      currentFile = null;
-      isEditorDirty = false;
     }
     
-    // Remove from database
-    if (db && db.docs && db.docs[file.id]) {
-      delete db.docs[file.id];
-      
-      // Save to localStorage
-      try {
-        localStorage.setItem('markdown_vault_data', JSON.stringify(db));
-        console.log('Database saved to localStorage after deletion');
-      } catch (localStorageError) {
-        console.error('Failed to save to localStorage after deletion:', localStorageError);
-      }
-      
-      // Update file list
-      refreshFileList(
-        db.docs,
-        document.getElementById('file-list'),
-        selectFile,
-        confirmDeleteFile
-      );
-      
-      // Show notification
-      showNotification('Document deleted successfully', 'success');
-      console.log('File deleted successfully');
-      return true;
-    } else {
-      console.error('File not found in database');
-      showNotification('Error: File not found', 'error');
-      return false;
+    // Save to localStorage
+    try {
+      localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+      console.log('Database saved to localStorage after deletion');
+    } catch (localStorageError) {
+      console.error('Failed to save to localStorage after deletion:', localStorageError);
+      // Continue anyway as we've already saved to secure database
     }
+    
+    // Clear editor if this was the current file
+    if (currentFile && currentFile.id === file.id) {
+      currentFile = null;
+      document.getElementById('markdown-editor').value = '';
+      document.getElementById('preview').innerHTML = '';
+      document.getElementById('file-title').textContent = 'No file selected';
+    }
+    
+    // Update file list
+    refreshFileList();
+    
+    showNotification('Document deleted', 'success');
+    
+    return true;
   } catch (error) {
     console.error('Failed to delete document:', error);
     showNotification('Failed to delete document: ' + error.message, 'error');

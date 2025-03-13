@@ -1,5 +1,11 @@
 // Import dependencies
 import { showNotification } from './ui.js';
+import { 
+  saveDatabase, 
+  decryptData, 
+  encryptData, 
+  getEncryptionKey 
+} from './database.js';
 
 // Current state
 let db = null;
@@ -14,7 +20,7 @@ export function initializePhotoManager(appState) {
   const photosContainer = document.getElementById('photos-container');
   const viewOptions = document.querySelectorAll('.view-option');
   
-  // Load database from localStorage
+  // Load database from localStorage - temporary solution until fully migrated to secure database
   try {
     const savedData = localStorage.getItem('markdown_vault_data');
     if (savedData) {
@@ -103,12 +109,22 @@ async function uploadPhotos(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to localStorage
+  // Save to database
   try {
+    // First, save to localStorage as a fallback
     localStorage.setItem('markdown_vault_data', JSON.stringify(db));
-    console.log('Saved photos to localStorage');
-  } catch (localStorageError) {
-    console.error('Failed to save photos to localStorage:', localStorageError);
+    
+    // Then encrypt and save to secure storage if encryption key is available
+    const encryptionKey = getEncryptionKey();
+    if (encryptionKey) {
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        await saveDatabase();
+        console.log('Saved photos to secure database');
+      }
+    }
+  } catch (error) {
+    console.error('Failed to save photos:', error);
     showNotification('Error saving photos. Please try again.', 'error');
   }
   
@@ -314,6 +330,16 @@ function deletePhoto(photo) {
     
     // Save database
     localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    
+    // Save to secure database if encryption key is available
+    const encryptionKey = getEncryptionKey();
+    if (encryptionKey) {
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        saveDatabase();
+        console.log('Saved changes to secure database after photo deletion');
+      }
+    }
     
     // Update gallery
     renderPhotoGallery(db.photos);

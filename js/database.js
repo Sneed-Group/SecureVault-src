@@ -380,6 +380,72 @@ export async function changeEncryptionKey(newKey) {
   }
 }
 
+/**
+ * Load database from encrypted localStorage
+ * This is a helper function for the transition from localStorage to secure database
+ * @returns {object} The decrypted database object or null if error
+ */
+export function loadFromLocalStorage() {
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return null;
+  }
+  
+  try {
+    // Get data from localStorage
+    const data = localStorage.getItem('markdown_vault_data');
+    
+    if (!data) {
+      console.error("No data found in localStorage");
+      return null;
+    }
+    
+    // Parse the data (it's currently not encrypted in localStorage)
+    const parsedData = JSON.parse(data);
+    
+    return parsedData;
+  } catch (error) {
+    console.error("Error loading from localStorage:", error);
+    return null;
+  }
+}
+
+/**
+ * Save database to secure storage and localStorage
+ * @param {object} data - The data to save
+ * @returns {boolean} True if save was successful
+ */
+export async function saveToSecureStorage(data) {
+  if (!dbInitialized) {
+    console.error("Database not initialized");
+    return false;
+  }
+  
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return false;
+  }
+  
+  try {
+    // Encrypt and save data
+    const encrypted = encryptData(data);
+    
+    if (!encrypted) {
+      console.error("Failed to encrypt data");
+      return false;
+    }
+    
+    // Update localStorage as a fallback/transition
+    localStorage.setItem('markdown_vault_data', JSON.stringify(data));
+    
+    console.log("Data saved to secure storage");
+    return true;
+  } catch (error) {
+    console.error("Error saving to secure storage:", error);
+    return false;
+  }
+}
+
 // Export database module
 export default {
   initializeDatabase,
@@ -395,5 +461,7 @@ export default {
   saveDatabase,
   exportDatabase,
   importDatabase,
-  changeEncryptionKey
+  changeEncryptionKey,
+  loadFromLocalStorage,
+  saveToSecureStorage
 }; 

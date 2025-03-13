@@ -1,5 +1,11 @@
 // Import dependencies
 import { showNotification } from './ui.js';
+import { 
+  saveDatabase, 
+  decryptData, 
+  encryptData, 
+  getEncryptionKey 
+} from './database.js';
 
 // Current state
 let db = null;
@@ -14,7 +20,7 @@ export function initializeFileManager(appState) {
   const filesContainer = document.getElementById('files-container');
   const sortFilesSelect = document.getElementById('sort-files');
   
-  // Load database from localStorage
+  // Load database from localStorage - temporary solution until fully migrated to secure database
   try {
     const savedData = localStorage.getItem('markdown_vault_data');
     if (savedData) {
@@ -89,12 +95,22 @@ async function uploadFiles(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to localStorage
+  // Save to database
   try {
+    // First, save to localStorage as a fallback
     localStorage.setItem('markdown_vault_data', JSON.stringify(db));
-    console.log('Saved files to localStorage');
-  } catch (localStorageError) {
-    console.error('Failed to save files to localStorage:', localStorageError);
+    
+    // Then encrypt and save to secure storage if encryption key is available
+    const encryptionKey = getEncryptionKey();
+    if (encryptionKey) {
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        await saveDatabase();
+        console.log('Saved files to secure database');
+      }
+    }
+  } catch (error) {
+    console.error('Failed to save files:', error);
     showNotification('Error saving files. Please try again.', 'error');
   }
   
@@ -326,6 +342,16 @@ function deleteFile(file) {
     
     // Save database
     localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    
+    // Save to secure database if encryption key is available
+    const encryptionKey = getEncryptionKey();
+    if (encryptionKey) {
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        saveDatabase();
+        console.log('Saved changes to secure database after deletion');
+      }
+    }
     
     // Update file list
     renderFilesList(db.files);
