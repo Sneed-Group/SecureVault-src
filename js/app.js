@@ -20,6 +20,18 @@ const appState = {
   editorFontSize: 'medium'
 };
 
+// Change the 'accept' attribute to allow only .vault files (HACK)
+document.addEventListener("DOMContentLoaded", function() {
+  // Get the file input element by ID
+  var fileInput = document.getElementById("import-file-input");
+
+  // Change the 'accept' attribute to allow only .vault files
+  if (fileInput) {
+      fileInput.accept = ".vault";
+  }
+});
+
+
 /**
  * Initialize the application
  */
