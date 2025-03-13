@@ -130,9 +130,9 @@ async function uploadFiles(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to secure storage
+  // Save to secure storage (without downloading the file)
   try {
-    const saveResult = await saveToSecureStorage(db);
+    const saveResult = await saveToSecureStorage(db, false);
     
     if (!saveResult) {
       throw new Error('Failed to save to secure storage');

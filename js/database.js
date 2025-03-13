@@ -104,9 +104,10 @@ export function decryptData(encryptedData) {
 /**
  * Save data to secure storage as a file
  * @param {object} data - The data to save
+ * @param {boolean} downloadFile - Whether to download the vault file
  * @returns {Promise<boolean>} True if save was successful
  */
-export async function saveToSecureStorage(data) {
+export async function saveToSecureStorage(data, downloadFile = false) {
   if (!encryptionKey) {
     console.error("Encryption key not set");
     return false;
@@ -139,13 +140,15 @@ export async function saveToSecureStorage(data) {
     // Convert to JSON
     const jsonData = JSON.stringify(vaultFileObj);
     
-    // Save as file
-    await downloadVaultFile(jsonData);
+    // Only download file if explicitly requested
+    if (downloadFile) {
+      await downloadVaultFile(jsonData);
+    }
     
     // Update the vault data
     vaultData = vaultObj;
     
-    console.log("Data saved to secure storage file");
+    console.log("Data saved to secure storage");
     return true;
   } catch (error) {
     console.error("Error saving to secure storage:", error);
@@ -320,6 +323,25 @@ export async function importDatabaseWithPassword(file, password) {
   }
 }
 
+/**
+ * Export database to a file
+ * @returns {Promise<boolean>} True if export was successful
+ */
+export async function exportDatabase() {
+  try {
+    if (!vaultData || !encryptionKey) {
+      console.error("No vault data or encryption key available");
+      return false;
+    }
+    
+    // Use saveToSecureStorage with download flag set to true
+    return await saveToSecureStorage(vaultData, true);
+  } catch (error) {
+    console.error("Error exporting database:", error);
+    return false;
+  }
+}
+
 // Export database module
 export default {
   setEncryptionKey,
@@ -334,5 +356,6 @@ export default {
   getVaultFile,
   downloadVaultFile,
   readVaultFile,
-  importDatabaseWithPassword
+  importDatabaseWithPassword,
+  exportDatabase
 }; 

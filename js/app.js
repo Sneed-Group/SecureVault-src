@@ -101,7 +101,7 @@ function initializeAppComponents() {
   initializePhotoManager(appState);
   
   // Show the first tab as active (docs)
-  const defaultTab = document.querySelector('.nav-tabs li[data-tab="docs"]');
+  const defaultTab = document.querySelector('.nav-tabs li[data-section="docs"]');
   if (defaultTab) {
     defaultTab.click();
   }
@@ -145,7 +145,7 @@ function setupNavigationHandlers() {
   navTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       // Get the tab ID
-      const tabId = tab.getAttribute('data-tab');
+      const tabId = tab.getAttribute('data-section');
       
       // Update active tab
       navTabs.forEach(t => t.classList.remove('active'));

@@ -272,13 +272,27 @@ async function saveCurrentFile(isAutosave = false) {
   
   if (!editor) {
     console.error('Editor not found');
+    if (!isAutosave) {
+      showNotification('Cannot save - editor not initialized', 'error');
+    }
     return false;
   }
   
   // Check for encryption key
   const encryptionKey = getEncryptionKey();
   if (!encryptionKey) {
-    showNotification('Cannot save - you must be logged in', 'error');
+    if (!isAutosave) {
+      showNotification('Cannot save - you must be logged in', 'error');
+    }
+    return false;
+  }
+  
+  // Check if db is properly initialized
+  if (!db) {
+    console.error('Database not initialized');
+    if (!isAutosave) {
+      showNotification('Cannot save - database not initialized', 'error');
+    }
     return false;
   }
   

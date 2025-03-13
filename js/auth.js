@@ -41,7 +41,8 @@ export function userExists() {
  * @returns {boolean} True if user is authenticated
  */
 export function checkAuthentication() {
-  return sessionStorage.getItem('sessionKey') !== null;
+  // Check both the isAuthenticated flag and session storage
+  return isAuthenticated || sessionStorage.getItem('sessionKey') !== null;
 }
 
 /**
@@ -158,6 +159,9 @@ export function authenticateUser(password) {
       // Set the encryption key for the database
       const encryptionKeySet = setEncryptionKey(derivedKey);
       console.log("Encryption key set:", encryptionKeySet);
+      
+      // Set authentication state
+      isAuthenticated = true;
       
       // Dispatch login event
       window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
@@ -285,197 +289,153 @@ export function initializeAuth() {
   // Get authentication elements
   const authScreen = document.getElementById('auth-screen');
   const mainScreen = document.getElementById('main-screen');
-  const loginForm = document.getElementById('login-form');
-  const signupForm = document.getElementById('signup-form');
+  const passwordForm = document.getElementById('password-form');
   const passwordInput = document.getElementById('password');
-  const newPasswordInput = document.getElementById('new-password');
   const confirmPasswordInput = document.getElementById('confirm-password');
-  const loginBtn = document.getElementById('login-btn');
-  const signupBtn = document.getElementById('signup-btn');
-  const switchToSignupBtn = document.getElementById('switch-to-signup-btn');
-  const switchToLoginBtn = document.getElementById('switch-to-login-btn');
+  const unlockBtn = document.getElementById('unlock-btn');
+  const newUserFields = document.getElementById('new-user-fields');
   const logoutBtn = document.getElementById('logout-btn');
   const importDbBtn = document.getElementById('import-db-btn');
-  const importFileInput = document.getElementById('db-import');
+  const importFileInput = document.getElementById('import-file-input');
   
   // Check if user exists
   const hasUser = userExists();
   
-  // Show/hide appropriate fields
+  // Show/hide appropriate fields based on whether user exists
   if (hasUser) {
     logoutBtn.textContent = 'Logout';
-    loginForm.classList.add('active');
-    signupForm.classList.remove('active');
+    newUserFields.style.display = 'none';
+    unlockBtn.textContent = 'Unlock Vault';
   } else {
     logoutBtn.textContent = 'Logout';
-    loginForm.classList.add('active');
-    signupForm.classList.add('active');
+    newUserFields.style.display = 'block';
+    unlockBtn.textContent = 'Create Vault';
   }
   
-  // Login form submission
-  if (loginForm) {
-    loginForm.addEventListener('submit', async (e) => {
+  // Add click handler for unlock button
+  if (unlockBtn) {
+    unlockBtn.addEventListener('click', async (e) => {
       e.preventDefault();
       
       // Get values
       const password = passwordInput.value.trim();
       
-      // Validate
-      if (!password) {
-        showAuthMessage('Please enter your password', 'error');
-        return;
-      }
-      
-      // Disable button during authentication
-      if (loginBtn) {
-        loginBtn.disabled = true;
-        loginBtn.textContent = 'Logging in...';
-      }
-      
-      try {
-        // Prompt user to select their vault file
-        vaultFileInput.onchange = async (e) => {
-          const file = e.target.files[0];
-          if (!file) {
-            showAuthMessage('No vault file selected', 'error');
-            if (loginBtn) {
-              loginBtn.disabled = false;
-              loginBtn.textContent = 'Login';
+      // If existing user, handle login
+      if (hasUser) {
+        // Validate
+        if (!password) {
+          showAuthMessage('Please enter your password', 'error');
+          return;
+        }
+        
+        // Disable button during authentication
+        unlockBtn.disabled = true;
+        unlockBtn.textContent = 'Unlocking...';
+        
+        try {
+          // Prompt user to select their vault file
+          vaultFileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) {
+              showAuthMessage('No vault file selected', 'error');
+              unlockBtn.disabled = false;
+              unlockBtn.textContent = 'Unlock Vault';
+              return;
             }
-            return;
-          }
+            
+            // Set the vault file and attempt login
+            const success = await login(password, file);
+            
+            if (success) {
+              // Hide auth screen, show main screen
+              authScreen.classList.remove('active');
+              mainScreen.classList.add('active');
+              
+              // Clear password
+              passwordInput.value = '';
+              
+              // Show welcome message
+              showAuthMessage(`Login successful`, 'success');
+            } else {
+              showAuthMessage('Invalid password or corrupted vault file', 'error');
+            }
+            
+            // Reset button
+            unlockBtn.disabled = false;
+            unlockBtn.textContent = 'Unlock Vault';
+          };
           
-          // Set the vault file and attempt login
-          const success = await login(password, file);
+          // Trigger file selection
+          vaultFileInput.click();
+        } catch (error) {
+          console.error('Login error:', error);
+          showAuthMessage('Login failed: ' + error.message, 'error');
+          
+          // Reset button
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = 'Unlock Vault';
+        }
+      } else {
+        // Handle signup for new user
+        const confirmPassword = confirmPasswordInput.value.trim();
+        
+        // Validate
+        if (!password) {
+          showAuthMessage('Please enter a password', 'error');
+          return;
+        }
+        
+        if (password !== confirmPassword) {
+          showAuthMessage('Passwords do not match', 'error');
+          return;
+        }
+        
+        if (password.length < 8) {
+          showAuthMessage('Password must be at least 8 characters', 'error');
+          return;
+        }
+        
+        // Disable button during signup
+        unlockBtn.disabled = true;
+        unlockBtn.textContent = 'Creating Vault...';
+        
+        try {
+          // Create a new vault
+          const success = await signup(password);
           
           if (success) {
             // Hide auth screen, show main screen
             authScreen.classList.remove('active');
             mainScreen.classList.add('active');
             
-            // Clear password
+            // Clear passwords
             passwordInput.value = '';
+            confirmPasswordInput.value = '';
             
             // Show welcome message
-            showAuthMessage(`Login successful`, 'success');
-          } else {
-            showAuthMessage('Invalid password or corrupted vault file', 'error');
+            showAuthMessage('New vault created successfully! Your vault file has been downloaded.', 'success');
+            showNotification('Remember to keep your vault file safe!', 'info');
           }
           
           // Reset button
-          if (loginBtn) {
-            loginBtn.disabled = false;
-            loginBtn.textContent = 'Login';
-          }
-        };
-        
-        // Trigger file selection
-        vaultFileInput.click();
-      } catch (error) {
-        console.error('Login error:', error);
-        showAuthMessage('Login failed: ' + error.message, 'error');
-        
-        // Reset button
-        if (loginBtn) {
-          loginBtn.disabled = false;
-          loginBtn.textContent = 'Login';
-        }
-      }
-    });
-  }
-  
-  // Signup form submission
-  if (signupForm) {
-    signupForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      // Get values
-      const newPassword = newPasswordInput.value.trim();
-      const confirmPassword = confirmPasswordInput.value.trim();
-      
-      // Validate
-      if (!newPassword) {
-        showAuthMessage('Please enter a password', 'error');
-        return;
-      }
-      
-      if (newPassword !== confirmPassword) {
-        showAuthMessage('Passwords do not match', 'error');
-        return;
-      }
-      
-      if (newPassword.length < 8) {
-        showAuthMessage('Password must be at least 8 characters', 'error');
-        return;
-      }
-      
-      // Disable button during signup
-      if (signupBtn) {
-        signupBtn.disabled = true;
-        signupBtn.textContent = 'Creating Vault...';
-      }
-      
-      try {
-        // Create a new vault
-        const success = await signup(newPassword);
-        
-        if (success) {
-          // Hide auth screen, show main screen
-          authScreen.classList.remove('active');
-          mainScreen.classList.add('active');
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = 'Create Vault';
+        } catch (error) {
+          console.error('Signup error:', error);
+          showAuthMessage('Vault creation failed: ' + error.message, 'error');
           
-          // Clear passwords
-          newPasswordInput.value = '';
-          confirmPasswordInput.value = '';
-          
-          // Show welcome message
-          showAuthMessage('New vault created successfully! Your vault file has been downloaded.', 'success');
-          showNotification('Remember to keep your vault file safe!', 'info');
-        }
-        
-        // Reset button
-        if (signupBtn) {
-          signupBtn.disabled = false;
-          signupBtn.textContent = 'Create Vault';
-        }
-      } catch (error) {
-        console.error('Signup error:', error);
-        showAuthMessage('Vault creation failed: ' + error.message, 'error');
-        
-        // Reset button
-        if (signupBtn) {
-          signupBtn.disabled = false;
-          signupBtn.textContent = 'Create Vault';
+          // Reset button
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = 'Create Vault';
         }
       }
     });
   }
   
-  // Switch to signup
-  if (switchToSignupBtn) {
-    switchToSignupBtn.addEventListener('click', (e) => {
+  // Password form submission - just prevent default since we use the button click handler
+  if (passwordForm) {
+    passwordForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
-      // Hide login form, show signup form
-      loginForm.classList.remove('active');
-      signupForm.classList.add('active');
-      
-      // Clear error messages
-      clearAuthMessages();
-    });
-  }
-  
-  // Switch to login
-  if (switchToLoginBtn) {
-    switchToLoginBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      
-      // Hide signup form, show login form
-      signupForm.classList.remove('active');
-      loginForm.classList.add('active');
-      
-      // Clear error messages
-      clearAuthMessages();
     });
   }
   
@@ -489,8 +449,15 @@ export function initializeAuth() {
       // Hide main screen, show auth screen
       mainScreen.classList.remove('active');
       authScreen.classList.add('active');
-      loginForm.classList.add('active');
-      signupForm.classList.remove('active');
+      
+      // Reset UI for login
+      if (hasUser) {
+        newUserFields.style.display = 'none';
+        unlockBtn.textContent = 'Unlock Vault';
+      } else {
+        newUserFields.style.display = 'block';
+        unlockBtn.textContent = 'Create Vault';
+      }
       
       // Show logout message
       showAuthMessage('You have been logged out', 'success');
@@ -624,6 +591,11 @@ export function initializeAuth() {
   // Helper function to show auth messages
   function showAuthMessage(message, type) {
     const messageContainer = document.getElementById('auth-message');
+    if (!messageContainer) {
+      console.error('Auth message container not found');
+      return;
+    }
+    
     messageContainer.textContent = message;
     messageContainer.className = 'message';
     messageContainer.classList.add(`${type}-message`);
@@ -669,6 +641,17 @@ export async function login(password, vaultFile) {
       
       // Set the username (could be derived from the vault file name)
       username = vaultFile.name.split('.')[0];
+      
+      // Show the main screen, hide auth screen
+      const authScreen = document.getElementById('auth-screen');
+      const mainScreen = document.getElementById('main-screen');
+      if (authScreen && mainScreen) {
+        authScreen.classList.remove('active');
+        mainScreen.classList.add('active');
+      }
+      
+      // Dispatch login event to trigger app initialization
+      window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
       
       console.log('Login successful');
       return true;
@@ -724,6 +707,17 @@ export async function signup(password) {
     if (saved) {
       // Set authentication state
       isAuthenticated = true;
+      
+      // Show the main screen, hide auth screen
+      const authScreen = document.getElementById('auth-screen');
+      const mainScreen = document.getElementById('main-screen');
+      if (authScreen && mainScreen) {
+        authScreen.classList.remove('active');
+        mainScreen.classList.add('active');
+      }
+      
+      // Dispatch login event to trigger app initialization
+      window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
       
       console.log('New vault created successfully');
       return true;
