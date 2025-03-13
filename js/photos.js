@@ -1,39 +1,49 @@
 // Import dependencies
-import { loadDatabase, saveDatabase } from './database.js';
 import { showNotification } from './ui.js';
 
 // Current state
 let db = null;
 
 // Initialize photo manager
-function initializePhotoManager(appState) {
+export function initializePhotoManager(appState) {
+  console.log('Initializing photo manager...');
+  
   // Get DOM elements
   const uploadPhotoBtn = document.getElementById('upload-photo-btn');
   const photoUploadInput = document.getElementById('photo-upload');
   const photosContainer = document.getElementById('photos-container');
   const viewOptions = document.querySelectorAll('.view-option');
   
-  // Load database
-  loadDatabase()
-    .then(data => {
-      db = data;
-      
-      // Initialize photos section if needed
-      if (!db.photos) {
-        db.photos = {};
-      }
-      
-      // Render gallery
-      renderPhotoGallery(db.photos);
-    })
-    .catch(error => {
-      console.error('Failed to load database:', error);
-    });
+  // Load database from localStorage
+  try {
+    const savedData = localStorage.getItem('markdown_vault_data');
+    if (savedData) {
+      db = JSON.parse(savedData);
+      console.log('Loaded data from localStorage for photos');
+    }
+  } catch (error) {
+    console.error('Error loading data from localStorage for photos:', error);
+  }
+  
+  // Initialize database structure if needed
+  if (!db) {
+    db = {};
+  }
+  
+  // Initialize photos section if needed
+  if (!db.photos) {
+    db.photos = {};
+  }
+  
+  // Render gallery
+  renderPhotoGallery(db.photos);
   
   // Upload button click
   if (uploadPhotoBtn) {
     uploadPhotoBtn.addEventListener('click', () => {
-      photoUploadInput.click();
+      if (photoUploadInput) {
+        photoUploadInput.click();
+      }
     });
   }
   
@@ -93,8 +103,14 @@ async function uploadPhotos(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save database
-  await saveDatabase(db);
+  // Save to localStorage
+  try {
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    console.log('Saved photos to localStorage');
+  } catch (localStorageError) {
+    console.error('Failed to save photos to localStorage:', localStorageError);
+    showNotification('Error saving photos: Storage limit may be exceeded', 'error');
+  }
   
   // Render the updated gallery
   renderPhotoGallery(db.photos);
@@ -291,13 +307,13 @@ function confirmDeletePhoto(photo) {
 }
 
 // Delete photo
-async function deletePhoto(photo) {
+function deletePhoto(photo) {
   try {
     // Remove from database
     delete db.photos[photo.id];
     
     // Save database
-    await saveDatabase(db);
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
     
     // Update gallery
     renderPhotoGallery(db.photos);
@@ -394,11 +410,10 @@ function downloadPhoto(photo) {
 
 // Generate a unique ID
 function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  return 'photo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
-// Export functions
-export {
-  initializePhotoManager,
-  uploadPhotos
+// Export the photo manager module
+export default {
+  initializePhotoManager
 }; 

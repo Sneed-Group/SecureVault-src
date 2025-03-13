@@ -1,39 +1,49 @@
 // Import dependencies
-import { loadDatabase, saveDatabase } from './database.js';
 import { showNotification } from './ui.js';
 
 // Current state
 let db = null;
 
 // Initialize file manager
-function initializeFileManager(appState) {
+export function initializeFileManager(appState) {
+  console.log('Initializing file manager...');
+  
   // Get DOM elements
   const uploadFileBtn = document.getElementById('upload-file-btn');
   const fileUploadInput = document.getElementById('file-upload');
   const filesContainer = document.getElementById('files-container');
   const sortFilesSelect = document.getElementById('sort-files');
   
-  // Load database
-  loadDatabase()
-    .then(data => {
-      db = data;
-      
-      // Initialize files section if needed
-      if (!db.files) {
-        db.files = {};
-      }
-      
-      // Render files list
-      renderFilesList(db.files);
-    })
-    .catch(error => {
-      console.error('Failed to load database:', error);
-    });
+  // Load database from localStorage
+  try {
+    const savedData = localStorage.getItem('markdown_vault_data');
+    if (savedData) {
+      db = JSON.parse(savedData);
+      console.log('Loaded data from localStorage for files');
+    }
+  } catch (error) {
+    console.error('Error loading data from localStorage for files:', error);
+  }
+  
+  // Initialize database structure if needed
+  if (!db) {
+    db = {};
+  }
+  
+  // Initialize files section if needed
+  if (!db.files) {
+    db.files = {};
+  }
+  
+  // Render files list
+  renderFilesList(db.files);
   
   // Upload button click
   if (uploadFileBtn) {
     uploadFileBtn.addEventListener('click', () => {
-      fileUploadInput.click();
+      if (fileUploadInput) {
+        fileUploadInput.click();
+      }
     });
   }
   
@@ -79,8 +89,14 @@ async function uploadFiles(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save database
-  await saveDatabase(db);
+  // Save to localStorage
+  try {
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    console.log('Saved files to localStorage');
+  } catch (localStorageError) {
+    console.error('Failed to save files to localStorage:', localStorageError);
+    showNotification('Error saving files: Storage limit may be exceeded', 'error');
+  }
   
   // Render the updated file list
   renderFilesList(db.files);
@@ -303,13 +319,13 @@ function confirmDeleteFile(file) {
 }
 
 // Delete file
-async function deleteFile(file) {
+function deleteFile(file) {
   try {
     // Remove from database
     delete db.files[file.id];
     
     // Save database
-    await saveDatabase(db);
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
     
     // Update file list
     renderFilesList(db.files);
@@ -402,12 +418,10 @@ function previewFile(file) {
 
 // Generate a unique ID
 function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  return 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
-// Export functions
-export {
-  initializeFileManager,
-  uploadFiles,
-  downloadFile
+// Export the file manager module
+export default {
+  initializeFileManager
 }; 

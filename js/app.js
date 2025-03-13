@@ -2,9 +2,14 @@
 import { initializeDatabase, closeDatabase, setEncryptionKey } from './database.js';
 import { initializeUI, toggleTheme } from './ui.js';
 import { initializeAuth, checkAuthentication, AUTH_EVENTS } from './auth.js';
-import { initializeEditor } from './editor.js';
-import { initializeFileManager } from './files.js';
-import { initializePhotoManager } from './photos.js';
+import editorModule from './editor.js';
+import fileManagerModule from './files.js';
+import photoManagerModule from './photos.js';
+
+// Extract module functions
+const { initializeEditor } = editorModule;
+const { initializeFileManager } = fileManagerModule;
+const { initializePhotoManager } = photoManagerModule;
 
 // Application state
 const appState = {
