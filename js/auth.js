@@ -1,4 +1,5 @@
 // Import crypto functionality
+import CryptoJS from 'crypto-js';
 import {
   deriveKeyFromPassword,
   validatePassword,
@@ -35,20 +36,33 @@ export function checkAuthentication() {
 /**
  * Create a new user
  * @param {string} password - The password to set
- * @returns {boolean} True if user was created successfully
+ * @returns {Promise<boolean>} True if user was created successfully
  */
-export function createUser(password) {
-  if (!password) return false;
+export async function createUser(password) {
+  if (!password) {
+    console.error("Create user error: Password is empty");
+    return false;
+  }
 
   try {
+    console.log("Creating user with password...");
+    
+    // Check if CryptoJS is properly loaded
+    if (!CryptoJS || !CryptoJS.lib || !CryptoJS.lib.WordArray) {
+      throw new Error("CryptoJS library is not properly loaded");
+    }
+    
     // Generate a random salt
     const salt = CryptoJS.lib.WordArray.random(16).toString();
+    console.log("Salt generated:", salt);
     
     // Derive a key from the password
     const derivedKey = deriveKeyFromPassword(password, salt);
+    console.log("Key derived successfully");
     
     // Hash the derived key for storage
     const keyHash = CryptoJS.SHA256(derivedKey).toString();
+    console.log("Key hash created");
     
     // Store auth data in localStorage
     const authData = {
@@ -59,23 +73,32 @@ export function createUser(password) {
     };
     
     localStorage.setItem('auth', JSON.stringify(authData));
+    console.log("Auth data stored in localStorage");
     
     // Store session key in sessionStorage
     sessionStorage.setItem('sessionKey', derivedKey);
+    console.log("Session key stored");
     
     // Set the encryption key for the database
-    setEncryptionKey(derivedKey);
+    const encryptionKeySet = setEncryptionKey(derivedKey);
+    console.log("Encryption key set:", encryptionKeySet);
     
     // Initialize and create empty database
-    initializeDatabase();
-    createEmptyDatabase();
+    const dbInitialized = initializeDatabase();
+    console.log("Database initialized:", dbInitialized);
+    
+    // Call createEmptyDatabase with await since it's async
+    const dbCreated = await createEmptyDatabase();
+    console.log("Empty database created:", dbCreated);
     
     // Dispatch login event
     window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
+    console.log("Login event dispatched");
     
     return true;
   } catch (error) {
-    console.error("Error creating user:", error);
+    console.error("Error creating user:", error.message);
+    console.error("Error stack:", error.stack);
     return false;
   }
 }
@@ -86,40 +109,56 @@ export function createUser(password) {
  * @returns {boolean} True if authentication was successful
  */
 export function authenticateUser(password) {
-  if (!password) return false;
+  if (!password) {
+    console.error("Authentication error: Password is empty");
+    return false;
+  }
   
   try {
+    console.log("Authenticating user...");
+    
     // Get stored auth data
     const authDataStr = localStorage.getItem('auth');
-    if (!authDataStr) return false;
+    if (!authDataStr) {
+      console.error("Authentication error: No auth data found in localStorage");
+      return false;
+    }
     
     const authData = JSON.parse(authDataStr);
+    console.log("Auth data retrieved successfully");
     
     // Validate the password
     const isValid = validatePassword(password, authData);
+    console.log("Password validation result:", isValid);
     
     if (isValid) {
       // Derive the key again
       const derivedKey = deriveKeyFromPassword(password, authData.salt);
+      console.log("Key derived successfully");
       
       // Store session key in sessionStorage
       sessionStorage.setItem('sessionKey', derivedKey);
+      console.log("Session key stored");
       
       // Set the encryption key for the database
-      setEncryptionKey(derivedKey);
+      const encryptionKeySet = setEncryptionKey(derivedKey);
+      console.log("Encryption key set:", encryptionKeySet);
       
       // Initialize database
-      initializeDatabase();
+      const dbInitialized = initializeDatabase();
+      console.log("Database initialized:", dbInitialized);
       
       // Dispatch login event
       window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
+      console.log("Login event dispatched");
       
       return true;
     }
     
     return false;
   } catch (error) {
-    console.error("Error authenticating user:", error);
+    console.error("Error authenticating user:", error.message);
+    console.error("Error stack:", error.stack);
     return false;
   }
 }
@@ -189,23 +228,31 @@ export function logoutUser() {
  * Import database with password
  * @param {File} file - The file to import
  * @param {string} password - The password for decryption
- * @returns {boolean} True if import was successful
+ * @returns {Promise<boolean>} True if import was successful
  */
 export async function importDatabaseWithPassword(file, password) {
-  if (!file || !password) return false;
+  if (!file || !password) {
+    console.error("Import error: Missing file or password");
+    return false;
+  }
   
   try {
+    console.log("Importing database with password...");
+    
     // Create a new user with the password
-    const created = createUser(password);
+    const created = await createUser(password);
+    console.log("User created for import:", created);
     
     if (!created) return false;
     
     // Import the database
     const imported = await importDatabase(file);
+    console.log("Database imported:", imported);
     
     return imported;
   } catch (error) {
-    console.error("Error importing database with password:", error);
+    console.error("Error importing database with password:", error.message);
+    console.error("Error stack:", error.stack);
     return false;
   }
 }
@@ -238,7 +285,7 @@ export function initializeAuth() {
   }
   
   // Handle unlock/create button click
-  unlockBtn.addEventListener('click', (e) => {
+  unlockBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     
     const password = passwordInput.value.trim();
@@ -273,15 +320,26 @@ export function initializeAuth() {
         return;
       }
       
-      const created = createUser(password);
-      
-      if (created) {
-        authScreen.classList.remove('active');
-        mainScreen.classList.add('active');
-        passwordInput.value = '';
-        confirmPasswordInput.value = '';
-      } else {
-        showAuthMessage('Error creating vault', 'error');
+      try {
+        unlockBtn.disabled = true;
+        unlockBtn.textContent = 'Creating...';
+        
+        const created = await createUser(password);
+        
+        if (created) {
+          authScreen.classList.remove('active');
+          mainScreen.classList.add('active');
+          passwordInput.value = '';
+          confirmPasswordInput.value = '';
+        } else {
+          showAuthMessage('Error creating vault', 'error');
+        }
+      } catch (error) {
+        console.error('Vault creation error:', error);
+        showAuthMessage('Error creating vault: ' + error.message, 'error');
+      } finally {
+        unlockBtn.disabled = false;
+        unlockBtn.textContent = 'Create Vault';
       }
     }
   });
@@ -323,15 +381,26 @@ export function initializeAuth() {
           return;
         }
         
-        const imported = await importDatabaseWithPassword(file, password);
-        
-        if (imported) {
-          authScreen.classList.remove('active');
-          mainScreen.classList.add('active');
-          passwordInput.value = '';
-          showAuthMessage('Vault imported successfully', 'success');
-        } else {
-          showAuthMessage('Error importing vault', 'error');
+        try {
+          importDbBtn.disabled = true;
+          importDbBtn.textContent = 'Importing...';
+          
+          const imported = await importDatabaseWithPassword(file, password);
+          
+          if (imported) {
+            authScreen.classList.remove('active');
+            mainScreen.classList.add('active');
+            passwordInput.value = '';
+            showAuthMessage('Vault imported successfully', 'success');
+          } else {
+            showAuthMessage('Error importing vault', 'error');
+          }
+        } catch (error) {
+          console.error('Import error:', error);
+          showAuthMessage('Error importing vault: ' + error.message, 'error');
+        } finally {
+          importDbBtn.disabled = false;
+          importDbBtn.textContent = 'Import Database';
         }
       }
     });
@@ -358,16 +427,27 @@ export function initializeAuth() {
         return;
       }
       
-      const imported = await importDatabaseWithPassword(file, password);
-      
-      if (imported) {
-        importModal.classList.remove('active');
-        authScreen.classList.remove('active');
-        mainScreen.classList.add('active');
-        importPassword.value = '';
-        showAuthMessage('Vault imported successfully', 'success');
-      } else {
-        showAuthMessage('Error importing vault', 'error');
+      try {
+        importConfirmBtn.disabled = true;
+        importConfirmBtn.textContent = 'Importing...';
+        
+        const imported = await importDatabaseWithPassword(file, password);
+        
+        if (imported) {
+          importModal.classList.remove('active');
+          authScreen.classList.remove('active');
+          mainScreen.classList.add('active');
+          importPassword.value = '';
+          showAuthMessage('Vault imported successfully', 'success');
+        } else {
+          showAuthMessage('Error importing vault', 'error');
+        }
+      } catch (error) {
+        console.error('Import error:', error);
+        showAuthMessage('Error importing vault: ' + error.message, 'error');
+      } finally {
+        importConfirmBtn.disabled = false;
+        importConfirmBtn.textContent = 'Import';
       }
     });
   }

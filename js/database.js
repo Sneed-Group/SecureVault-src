@@ -21,13 +21,18 @@ let dbInitialized = false;
  * Initialize the database
  */
 export function initializeDatabase() {
-  if (!db) {
-    console.log("Initializing database...");
-    db = new VaultDatabase();
-    dbInitialized = true;
-    return true;
+  try {
+    if (!db) {
+      console.log("Initializing database...");
+      db = new VaultDatabase();
+      dbInitialized = true;
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error("Error initializing database:", error);
+    throw new Error(`Database initialization failed: ${error.message}`);
   }
-  return false;
 }
 
 /**

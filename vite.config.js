@@ -4,6 +4,9 @@ export default defineConfig({
   // Base path for production build
   base: './',
   
+  // Public directory for static assets
+  publicDir: 'public',
+  
   // Development server configuration
   server: {
     port: 3000,

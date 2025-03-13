@@ -27,8 +27,9 @@ function initializeTabs() {
   
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
-      // Get the data-tab attribute
-      const tabId = tab.getAttribute('data-tab');
+      // Get the data-section attribute
+      const sectionId = tab.getAttribute('data-section');
+      console.log(`Tab clicked: ${sectionId}`);
       
       // Remove active class from all tabs and content sections
       tabs.forEach(t => t.classList.remove('active'));
@@ -36,7 +37,12 @@ function initializeTabs() {
       
       // Add active class to current tab and content section
       tab.classList.add('active');
-      document.getElementById(`${tabId}-section`).classList.add('active');
+      const targetSection = document.getElementById(`${sectionId}-section`);
+      if (targetSection) {
+        targetSection.classList.add('active');
+      } else {
+        console.error(`Section not found: ${sectionId}-section`);
+      }
     });
   });
 }
@@ -205,11 +211,66 @@ export function showNotification(message, type = 'info', duration = 3000) {
 }
 
 /**
+ * Refresh the file list
+ * @param {Object|Array} files - The files to display (can be object or array)
+ * @param {HTMLElement} fileList - The file list element
+ * @param {Function} onSelect - Callback for when a file is selected
+ * @param {Function} onDelete - Callback for when a file is deleted
+ */
+export function refreshFileList(files, fileList, onSelect, onDelete) {
+  if (!fileList) {
+    fileList = document.getElementById('file-list');
+    if (!fileList) {
+      console.error('File list element not found');
+      return;
+    }
+  }
+  
+  // Clear the list
+  fileList.innerHTML = '';
+  
+  // Convert files object to array if needed
+  let filesArray = files;
+  if (files && typeof files === 'object' && !Array.isArray(files)) {
+    filesArray = Object.values(files);
+  }
+  
+  // Check if there are files
+  if (!filesArray || filesArray.length === 0) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-state';
+    
+    const message = document.createElement('p');
+    message.textContent = 'No files found';
+    
+    const createButton = document.createElement('button');
+    createButton.className = 'btn primary';
+    createButton.textContent = 'Create New File';
+    
+    emptyState.appendChild(message);
+    emptyState.appendChild(createButton);
+    
+    fileList.appendChild(emptyState);
+    return;
+  }
+  
+  console.log('Refreshing file list:', filesArray);
+  
+  // Add files to the list
+  filesArray.forEach(file => {
+    const fileItem = createFileListItem(file, onSelect, onDelete);
+    fileList.appendChild(fileItem);
+  });
+}
+
+/**
  * Create a file list item
  * @param {object} file - The file data
+ * @param {Function} onSelect - Callback for when the file is selected
+ * @param {Function} onDelete - Callback for when the file is deleted
  * @returns {HTMLElement} The file list item element
  */
-export function createFileListItem(file) {
+export function createFileListItem(file, onSelect, onDelete) {
   const li = document.createElement('li');
   li.className = 'file-item';
   li.setAttribute('data-id', file.id);
@@ -230,7 +291,9 @@ export function createFileListItem(file) {
   editBtn.innerHTML = '✏️';
   editBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    // Handle edit action
+    if (onSelect && typeof onSelect === 'function') {
+      onSelect(file);
+    }
   });
   
   const deleteBtn = document.createElement('button');
@@ -238,7 +301,9 @@ export function createFileListItem(file) {
   deleteBtn.innerHTML = '🗑️';
   deleteBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    // Handle delete action
+    if (onDelete && typeof onDelete === 'function') {
+      onDelete(file);
+    }
   });
   
   actions.appendChild(editBtn);
@@ -248,42 +313,14 @@ export function createFileListItem(file) {
   li.appendChild(name);
   li.appendChild(actions);
   
-  return li;
-}
-
-/**
- * Refresh the file list
- * @param {array} files - The files to display
- */
-export function refreshFileList(files) {
-  const fileList = document.getElementById('file-list');
-  
-  // Clear the list
-  fileList.innerHTML = '';
-  
-  if (!files || files.length === 0) {
-    const emptyState = document.createElement('div');
-    emptyState.className = 'empty-state';
-    
-    const message = document.createElement('p');
-    message.textContent = 'No files found';
-    
-    const createButton = document.createElement('button');
-    createButton.className = 'btn primary';
-    createButton.textContent = 'Create New File';
-    
-    emptyState.appendChild(message);
-    emptyState.appendChild(createButton);
-    
-    fileList.appendChild(emptyState);
-    return;
-  }
-  
-  // Add files to the list
-  files.forEach(file => {
-    const fileItem = createFileListItem(file);
-    fileList.appendChild(fileItem);
+  // Add click handler for the entire row
+  li.addEventListener('click', () => {
+    if (onSelect && typeof onSelect === 'function') {
+      onSelect(file);
+    }
   });
+  
+  return li;
 }
 
 // Export UI module

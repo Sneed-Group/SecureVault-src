@@ -1,6 +1,6 @@
 // Import dependencies
 import { marked } from 'marked';
-import { loadDatabase, saveDatabase } from './database.js';
+import { saveDatabase } from './database.js';
 import { showNotification, refreshFileList } from './ui.js';
 import hljs from 'highlight.js';
 
@@ -9,8 +9,13 @@ let currentFile = null;
 let isEditorDirty = false;
 let db = null;
 
-// Initialize the editor component
-function initializeEditor(appState) {
+/**
+ * Initialize the editor component
+ * @param {Object} appState - Application state
+ */
+export function initializeEditor(appState) {
+  console.log('Initializing editor...');
+  
   // Get DOM elements
   const editor = document.getElementById('markdown-editor');
   const preview = document.getElementById('preview');
@@ -36,24 +41,24 @@ function initializeEditor(appState) {
     sanitize: false
   });
   
-  // Load database and initialize editor
-  loadDatabase()
-    .then(data => {
-      db = data;
-      
-      // Populate file list
-      if (db.docs) {
-        refreshFileList(
-          db.docs,
-          fileList,
-          selectFile,
-          confirmDeleteFile
-        );
-      }
-    })
-    .catch(error => {
-      console.error('Failed to load database:', error);
-    });
+  // Try to load existing data from localStorage
+  try {
+    const savedData = localStorage.getItem('markdown_vault_data');
+    if (savedData) {
+      db = JSON.parse(savedData);
+      console.log('Loaded data from localStorage');
+    }
+  } catch (error) {
+    console.error('Error loading data from localStorage:', error);
+  }
+  
+  // Initialize the database structure if needed
+  if (!db) {
+    db = { docs: {} };
+  }
+  
+  // Update the file list
+  refreshFileList(db.docs, fileList, selectFile, confirmDeleteFile);
   
   // View mode buttons
   if (editModeBtn) {
@@ -139,7 +144,10 @@ function initializeEditor(appState) {
   
   // Save button
   if (saveButton) {
-    saveButton.addEventListener('click', saveCurrentFile);
+    saveButton.addEventListener('click', () => {
+      console.log('Save button clicked');
+      saveCurrentFile();
+    });
   }
   
   // Create new button
@@ -164,10 +172,19 @@ function updatePreview() {
   const editor = document.getElementById('markdown-editor');
   const preview = document.getElementById('preview');
   
-  if (editor && preview) {
+  if (!editor || !preview) {
+    console.error('Editor or preview element not found');
+    return;
+  }
+  
+  try {
     const markdown = editor.value;
-    const html = marked(markdown);
+    const html = marked.parse(markdown);
     preview.innerHTML = html;
+    console.log('Preview updated');
+  } catch (error) {
+    console.error('Error updating preview:', error);
+    preview.innerHTML = '<div class="error">Error rendering preview</div>';
   }
 }
 
@@ -218,21 +235,42 @@ function applyFormat(format) {
 
 // Save the current file
 async function saveCurrentFile() {
+  console.log('Saving current file...');
   const editor = document.getElementById('markdown-editor');
+  const fileList = document.getElementById('file-list');
   
-  if (!editor || !db) return;
+  if (!editor) {
+    console.error('Editor not found');
+    return false;
+  }
+  
+  if (!db) {
+    console.error('Database not initialized');
+    db = { docs: {} };
+  }
   
   try {
     // If no current file, create a new one
     if (!currentFile) {
+      console.log('Creating new file...');
+      
+      // Prompt for a file name
+      const fileName = prompt('Enter a name for your document:', 'Untitled Document');
+      if (!fileName) {
+        console.log('File name not provided, aborting save');
+        return false;
+      }
+      
       currentFile = {
         id: generateId(),
-        name: 'Untitled Document',
+        name: fileName,
         type: 'markdown',
         content: editor.value,
         created: new Date().toISOString(),
         modified: new Date().toISOString()
       };
+      
+      console.log('New file created:', currentFile);
       
       // Add to database
       if (!db.docs) {
@@ -241,6 +279,7 @@ async function saveCurrentFile() {
       
       db.docs[currentFile.id] = currentFile;
     } else {
+      console.log('Updating existing file:', currentFile.id);
       // Update existing file
       currentFile.content = editor.value;
       currentFile.modified = new Date().toISOString();
@@ -249,8 +288,13 @@ async function saveCurrentFile() {
       db.docs[currentFile.id] = currentFile;
     }
     
-    // Save database
-    await saveDatabase(db);
+    // Save to localStorage (temporary solution until we implement proper saving)
+    try {
+      localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+      console.log('Saved to localStorage');
+    } catch (localStorageError) {
+      console.error('Failed to save to localStorage:', localStorageError);
+    }
     
     // Clear dirty flag
     isEditorDirty = false;
@@ -258,7 +302,7 @@ async function saveCurrentFile() {
     // Update file list
     refreshFileList(
       db.docs,
-      document.getElementById('file-list'),
+      fileList,
       selectFile,
       confirmDeleteFile
     );
@@ -266,6 +310,7 @@ async function saveCurrentFile() {
     // Show notification
     showNotification('Document saved successfully', 'success');
     
+    console.log('File saved successfully');
     return true;
   } catch (error) {
     console.error('Failed to save document:', error);
@@ -276,6 +321,7 @@ async function saveCurrentFile() {
 
 // Create a new document
 function createNewDocument() {
+  console.log('Creating new document...');
   // Check for unsaved changes
   if (isEditorDirty) {
     if (!confirm('You have unsaved changes. Create a new document anyway?')) {
@@ -285,7 +331,9 @@ function createNewDocument() {
   
   // Clear editor
   const editor = document.getElementById('markdown-editor');
-  editor.value = '';
+  if (editor) {
+    editor.value = '';
+  }
   
   // Clear current file
   currentFile = null;
@@ -298,15 +346,12 @@ function createNewDocument() {
     item.classList.remove('active');
   });
   
-  // Focus editor
-  editor.focus();
-  
-  // Show notification
-  showNotification('New document created', 'info');
+  console.log('New document created');
 }
 
 // Select a file to edit
 function selectFile(file) {
+  console.log('Selecting file:', file);
   // Check for unsaved changes
   if (isEditorDirty) {
     if (!confirm('You have unsaved changes. Open another document anyway?')) {
@@ -317,59 +362,80 @@ function selectFile(file) {
   // Set current file
   currentFile = file;
   
-  // Populate editor
+  // Load content into editor
   const editor = document.getElementById('markdown-editor');
-  editor.value = file.content || '';
+  if (editor) {
+    editor.value = file.content || '';
+  }
+  
+  // Update preview
+  updatePreview();
   
   // Clear dirty flag
   isEditorDirty = false;
   
-  // Update preview if needed
-  const editorContainer = document.querySelector('.editor-container');
-  if (editorContainer.classList.contains('split-mode') || 
-      editorContainer.classList.contains('preview-mode')) {
-    updatePreview();
-  }
+  // Update active file in list
+  document.querySelectorAll('.file-item').forEach(item => {
+    item.classList.remove('active');
+    if (item.getAttribute('data-id') === file.id) {
+      item.classList.add('active');
+    }
+  });
   
-  // Focus editor
-  editor.focus();
+  console.log('File selected:', file.name);
 }
 
-// Confirm and delete a file
+// Confirm file deletion
 function confirmDeleteFile(file) {
-  if (confirm(`Are you sure you want to delete "${file.name}"?`)) {
+  console.log('Confirming file deletion:', file);
+  if (confirm(`Are you sure you want to delete "${file.name}"? This action cannot be undone.`)) {
     deleteFile(file);
   }
 }
 
 // Delete a file
 async function deleteFile(file) {
+  console.log('Deleting file:', file);
   try {
-    // Remove from database
-    delete db.docs[file.id];
-    
-    // Save database
-    await saveDatabase(db);
-    
-    // Update file list
-    refreshFileList(
-      db.docs,
-      document.getElementById('file-list'),
-      selectFile,
-      confirmDeleteFile
-    );
-    
-    // Clear editor if the current file was deleted
+    // If this is the current file, clear the editor
     if (currentFile && currentFile.id === file.id) {
-      document.getElementById('markdown-editor').value = '';
+      const editor = document.getElementById('markdown-editor');
+      if (editor) {
+        editor.value = '';
+      }
       currentFile = null;
       isEditorDirty = false;
     }
     
-    // Show notification
-    showNotification('Document deleted successfully', 'success');
-    
-    return true;
+    // Remove from database
+    if (db && db.docs && db.docs[file.id]) {
+      delete db.docs[file.id];
+      
+      // Save to localStorage
+      try {
+        localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+        console.log('Database saved to localStorage after deletion');
+      } catch (localStorageError) {
+        console.error('Failed to save to localStorage after deletion:', localStorageError);
+      }
+      
+      // Update file list
+      refreshFileList(
+        db.docs,
+        document.getElementById('file-list'),
+        selectFile,
+        confirmDeleteFile
+      );
+      
+      // Show notification
+      showNotification('Document deleted successfully', 'success');
+      console.log('File deleted successfully');
+      return true;
+    } else {
+      console.error('File not found in database');
+      showNotification('Error: File not found', 'error');
+      return false;
+    }
   } catch (error) {
     console.error('Failed to delete document:', error);
     showNotification('Failed to delete document: ' + error.message, 'error');
@@ -377,15 +443,12 @@ async function deleteFile(file) {
   }
 }
 
-// Generate a unique ID
+// Generate a unique ID for a file
 function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  return 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
-// Export functions
-export {
-  initializeEditor,
-  updatePreview,
-  saveCurrentFile,
-  createNewDocument
+// Export the editor module
+export default {
+  initializeEditor
 }; 
