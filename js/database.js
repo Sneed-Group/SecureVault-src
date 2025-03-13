@@ -44,13 +44,19 @@ export function deriveKeyFromPassword(password, salt = 'SecureVaultSalt') {
   if (!password) return null;
   
   try {
+    // Normalize inputs for consistency
+    const normalizedPassword = String(password).trim();
+    const normalizedSalt = String(salt || 'SecureVaultSalt').trim();
+    
     // Use PBKDF2 to derive a strong key from the password
-    const key = CryptoJS.PBKDF2(password, salt, {
-      keySize: 256 / 32, // 256-bit key
-      iterations: 10000   // Recommended number of iterations
+    const key = CryptoJS.PBKDF2(normalizedPassword, normalizedSalt, {
+      keySize: 256 / 32, // 256-bit key (8 words)
+      iterations: 10000,  // OWASP recommended minimum
+      hasher: CryptoJS.algo.SHA256 // Specify hasher explicitly
     });
     
     // Return key as Base64 string for consistent format
+    // Base64 is more efficient than Hex for storage
     return key.toString(CryptoJS.enc.Base64);
   } catch (error) {
     console.error("Error deriving key from password:", error);
@@ -113,7 +119,7 @@ export function encryptData(data) {
 }
 
 /**
- * Decrypt data using the encryption key - handles both old and new encryption formats
+ * Decrypt data using the encryption key - exact inverse of encryptData
  * @param {string} encryptedData - The encrypted data string
  * @returns {Object|null} The decrypted data object, or null if decryption failed
  */
@@ -131,25 +137,36 @@ export function decryptData(encryptedData) {
   try {
     console.log("Attempting to decrypt data...");
     
-    // Try decryption with explicit parameters first (new method)
-    let decrypted = CryptoJS.AES.decrypt(encryptedData, encryptionKey, {
-      mode: CryptoJS.mode.CBC,
-      padding: CryptoJS.pad.Pkcs7
-    });
+    // Main decryption approach - exact inverse of encryption
+    // Using identical configuration to ensure symmetric operation
+    let decrypted = null;
     
-    // If decryption result is empty, try with default parameters (old method)
-    if (!decrypted || decrypted.sigBytes <= 0) {
-      console.log("First decryption attempt failed, trying legacy method...");
+    // Step 1: Decrypt with AES using IDENTICAL configuration as encryption
+    try {
+      decrypted = CryptoJS.AES.decrypt(encryptedData, encryptionKey, {
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
+      });
+      
+      // Check if decryption result is valid
+      if (!decrypted || decrypted.sigBytes <= 0) {
+        throw new Error("Primary decryption method failed");
+      }
+    }
+    catch (primaryError) {
+      console.log("Primary decryption method failed, trying fallback method...", primaryError);
+      
+      // Fallback for backward compatibility with older encrypted data
       decrypted = CryptoJS.AES.decrypt(encryptedData, encryptionKey);
+      
+      // Check if fallback decryption result is valid
+      if (!decrypted || decrypted.sigBytes <= 0) {
+        console.error("All decryption methods failed, likely incorrect key");
+        return null;
+      }
     }
     
-    // Check if decryption result is still empty
-    if (!decrypted || decrypted.sigBytes <= 0) {
-      console.error("Decryption result is empty, likely incorrect key");
-      return null;
-    }
-    
-    // Step 2: Convert to UTF-8 string (reverse of JSON.stringify)
+    // Step 2: Convert to UTF-8 string (exact inverse of JSON.stringify in encryption)
     let jsonData;
     try {
       jsonData = decrypted.toString(CryptoJS.enc.Utf8);
@@ -164,7 +181,7 @@ export function decryptData(encryptedData) {
       return null;
     }
     
-    // Step 3: Parse JSON string back to object (reverse of stringification)
+    // Step 3: Parse JSON string back to object (exact inverse of stringification in encryption)
     try {
       const parsedData = JSON.parse(jsonData);
       console.log("Data decrypted and parsed successfully");
@@ -473,21 +490,21 @@ export async function importDatabaseWithPassword(file, password) {
     let decryptionSuccessful = false;
     let usedKey = null;
     
-    // Enhanced key derivation attempts
+    // Enhanced key derivation attempts - ordered by most recent to oldest method
     const keys = [
-      // Latest method: Base64 encoded PBKDF2 with default salt
-      { key: deriveKeyFromPassword(password), name: "default salt key (Base64)" },
+      // Current method: Base64 encoded PBKDF2 with default salt
+      { key: deriveKeyFromPassword(password), name: "current method key (Base64)" },
       
-      // Legacy method support
+      // Previous method support (just for backward compatibility)
       { key: deriveKeyFromPassword(password, ''), name: "no salt key (Base64)" },
       
-      // For compatibility with very old files
+      // For compatibility with older vault files using Hex encoding
       { key: CryptoJS.PBKDF2(password, 'SecureVaultSalt', {
           keySize: 256 / 32,
           iterations: 10000
-        }).toString(), name: "legacy default salt key (Hex)" },
+        }).toString(CryptoJS.enc.Hex), name: "legacy key (Hex)" },
       
-      // Last resort: raw password (not recommended, but kept for backwards compatibility)
+      // Last resort fallback
       { key: password, name: "raw password" }
     ];
     
@@ -516,12 +533,17 @@ export async function importDatabaseWithPassword(file, password) {
       throw new Error("Invalid vault login password or corrupt file");
     }
     
-    // Re-encrypt with the latest method if we used a legacy key
+    // Re-encrypt with the current method if we used a legacy key
     if (usedKey !== keys[0].key) {
-      console.log("Decryption used a legacy key method - will re-encrypt with latest method");
-      // Set the encryption key to the latest format for future encryption
-      const latestKey = deriveKeyFromPassword(password);
-      setEncryptionKey(latestKey);
+      console.log("Decryption used a legacy key method - will re-encrypt with current method");
+      // Set the encryption key to the current format for future encryption
+      const currentMethodKey = deriveKeyFromPassword(password);
+      setEncryptionKey(currentMethodKey);
+      
+      // We'll need to save the vault with the new encryption on next save
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('vault:autosave'));
+      }, 1000);
     }
     
     // Set the vault file only after successful decryption
