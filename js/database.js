@@ -1,78 +1,10 @@
 // Import crypto-js for encryption
 import CryptoJS from 'crypto-js';
-import Dexie from 'dexie';
 
-// Database class for storing encrypted vault data
-class VaultDatabase extends Dexie {
-  constructor() {
-    super('MarkdownVault');
-    this.version(1).stores({
-      meta: 'id',
-      data: 'id, type, name, updatedAt'
-    });
-  }
-}
-
-let db = null;
+// Current vault state and encryption key
+let vaultData = null;
 let encryptionKey = null;
-let dbInitialized = false;
-
-/**
- * Initialize the database
- */
-export function initializeDatabase() {
-  try {
-    if (!db) {
-      console.log("Initializing database...");
-      db = new VaultDatabase();
-      dbInitialized = true;
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error("Error initializing database:", error);
-    throw new Error(`Database initialization failed: ${error.message}`);
-  }
-}
-
-/**
- * Close the database connection
- */
-export function closeDatabase() {
-  if (db) {
-    db.close();
-    db = null;
-    encryptionKey = null;
-    dbInitialized = false;
-  }
-}
-
-/**
- * Create empty database structure
- */
-export async function createEmptyDatabase() {
-  if (!db) initializeDatabase();
-  
-  try {
-    // Clear any existing data
-    await db.meta.clear();
-    await db.data.clear();
-    
-    // Create metadata record
-    await db.meta.put({
-      id: 'metadata',
-      version: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-    
-    console.log("Empty database created successfully");
-    return true;
-  } catch (error) {
-    console.error("Error creating empty database:", error);
-    return false;
-  }
-}
+let vaultFile = null;
 
 /**
  * Set the encryption key
@@ -97,7 +29,7 @@ export function getEncryptionKey() {
  * @param {string} salt - Optional salt for key derivation
  * @returns {string} The derived key
  */
-export function deriveKeyFromPassword(password, salt = 'MarkdownVaultSalt') {
+export function deriveKeyFromPassword(password, salt = 'SecureVaultSalt') {
   if (!password) return null;
   // Use PBKDF2 to derive a strong key from the password
   const key = CryptoJS.PBKDF2(password, salt, {
@@ -170,230 +102,237 @@ export function decryptData(encryptedData) {
 }
 
 /**
- * Load database from encrypted data
- * @param {string} encryptedData - The encrypted database data
- * @returns {boolean} True if database was loaded successfully
+ * Save data to secure storage as a file
+ * @param {object} data - The data to save
+ * @returns {Promise<boolean>} True if save was successful
  */
-export async function loadDatabase(encryptedData) {
-  if (!db) initializeDatabase();
+export async function saveToSecureStorage(data) {
   if (!encryptionKey) {
     console.error("Encryption key not set");
     return false;
   }
   
   try {
-    const decrypted = decryptData(encryptedData);
-    if (!decrypted) return false;
-    
-    // Clear any existing data
-    await db.meta.clear();
-    await db.data.clear();
-    
-    // Load metadata
-    if (decrypted.meta) {
-      await db.meta.put(decrypted.meta);
-    }
-    
-    // Load data records
-    if (decrypted.data && Array.isArray(decrypted.data)) {
-      await db.data.bulkPut(decrypted.data);
-    }
-    
-    console.log("Database loaded successfully");
-    return true;
-  } catch (error) {
-    console.error("Error loading database:", error);
-    return false;
-  }
-}
-
-/**
- * Save database to encrypted data
- * @returns {string} The encrypted database data
- */
-export async function saveDatabase() {
-  if (!db) {
-    console.error("Database not initialized");
-    return null;
-  }
-  
-  if (!encryptionKey) {
-    console.error("Encryption key not set");
-    return null;
-  }
-  
-  try {
-    // Get metadata
-    const meta = await db.meta.get('metadata');
-    
-    // Get all data records
-    const data = await db.data.toArray();
-    
-    // Create the database object
-    const databaseObj = {
-      meta,
-      data
+    // Add metadata to the vault data
+    const vaultObj = {
+      ...data,
+      meta: {
+        version: 1,
+        updatedAt: new Date().toISOString()
+      }
     };
     
-    // Encrypt the database
-    const encrypted = encryptData(databaseObj);
-    
-    // Update metadata
-    await db.meta.update('metadata', { updatedAt: new Date().toISOString() });
-    
-    return encrypted;
-  } catch (error) {
-    console.error("Error saving database:", error);
-    return null;
-  }
-}
-
-/**
- * Export database to a file
- * @returns {boolean} True if export was successful
- */
-export async function exportDatabase() {
-  try {
-    // Get data from localStorage
-    const data = localStorage.getItem('markdown_vault_data');
-    
-    if (!data) {
-      console.error("No data found in localStorage");
-      return false;
+    // Encrypt the data
+    const encryptedData = encryptData(vaultObj);
+    if (!encryptedData) {
+      throw new Error("Failed to encrypt data");
     }
     
-    // Parse the data to ensure it's valid JSON
-    const parsedData = JSON.parse(data);
-    
-    // Create the export object
-    const exportObj = {
-      type: 'markdown-vault-export',
+    // Create vault file object
+    const vaultFileObj = {
+      type: 'secure-vault',
       version: 1,
       timestamp: new Date().toISOString(),
-      data: parsedData
+      data: encryptedData
     };
     
     // Convert to JSON
-    const jsonData = JSON.stringify(exportObj);
+    const jsonData = JSON.stringify(vaultFileObj);
     
-    // Create a download link
-    const blob = new Blob([jsonData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `markdown-vault-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Save as file
+    await downloadVaultFile(jsonData);
     
-    console.log("Database exported successfully");
+    // Update the vault data
+    vaultData = vaultObj;
+    
+    console.log("Data saved to secure storage file");
     return true;
   } catch (error) {
-    console.error("Error exporting database:", error);
+    console.error("Error saving to secure storage:", error);
     return false;
   }
 }
 
 /**
- * Import database from a file
- * @param {File} file - The file to import
- * @returns {Promise<boolean>} True if import was successful
+ * Load data from secure storage (vault file)
+ * @returns {Promise<object>} The loaded data, or null if load failed
  */
-export async function importDatabase(file) {
-  try {
-    // Read the file
-    const reader = new FileReader();
-    
-    return new Promise((resolve, reject) => {
-      reader.onload = async (event) => {
-        try {
-          const jsonData = event.target.result;
-          const importObj = JSON.parse(jsonData);
-          
-          // Validate the import object
-          if (importObj.type !== 'markdown-vault-export' || !importObj.data) {
-            console.error("Invalid import file format");
-            resolve(false);
-            return;
-          }
-          
-          // Store the data in localStorage
-          localStorage.setItem('markdown_vault_data', JSON.stringify(importObj.data));
-          
-          console.log("Database imported successfully");
-          resolve(true);
-        } catch (error) {
-          console.error("Error parsing import file:", error);
-          resolve(false);
-        }
-      };
-      
-      reader.onerror = () => {
-        console.error("Error reading import file");
-        resolve(false);
-      };
-      
-      reader.readAsText(file);
-    });
-  } catch (error) {
-    console.error("Error importing database:", error);
-    return false;
-  }
-}
-
-/**
- * Change the encryption key
- * @param {string} newKey - The new encryption key
- * @returns {boolean} True if key was changed successfully
- */
-export async function changeEncryptionKey(newKey) {
-  if (!dbInitialized) {
-    console.error("Database not initialized");
-    return false;
-  }
-  
+export async function loadFromSecureStorage() {
   if (!encryptionKey) {
     console.error("Encryption key not set");
-    return false;
-  }
-  
-  if (!newKey) {
-    console.error("New key is invalid");
-    return false;
+    return null;
   }
   
   try {
-    // Save the database with the current key
-    const encryptedData = await saveDatabase();
-    if (!encryptedData) return false;
+    // If we don't have a vault file, prompt user to select one
+    if (!vaultFile) {
+      console.log("No vault file loaded yet");
+      return null;
+    }
     
-    // Set the new key
-    encryptionKey = newKey;
+    // Read the file
+    const fileContent = await readVaultFile(vaultFile);
+    if (!fileContent) {
+      throw new Error("Failed to read vault file");
+    }
     
-    // Load the database with the new key
-    const success = await loadDatabase(encryptedData);
-    return success;
+    // Parse the JSON
+    const vaultFileObj = JSON.parse(fileContent);
+    
+    // Validate the file format
+    if (vaultFileObj.type !== 'secure-vault' || !vaultFileObj.data) {
+      throw new Error("Invalid vault file format");
+    }
+    
+    // Decrypt the data
+    const decryptedData = decryptData(vaultFileObj.data);
+    if (!decryptedData) {
+      throw new Error("Failed to decrypt vault data");
+    }
+    
+    // Store the decrypted data
+    vaultData = decryptedData;
+    
+    console.log("Data loaded from secure storage file");
+    return vaultData;
   } catch (error) {
-    console.error("Error changing encryption key:", error);
+    console.error("Error loading from secure storage:", error);
+    return null;
+  }
+}
+
+/**
+ * Set the current vault file
+ * @param {File} file - The vault file
+ */
+export function setVaultFile(file) {
+  vaultFile = file;
+}
+
+/**
+ * Get the current vault file
+ * @returns {File} The vault file
+ */
+export function getVaultFile() {
+  return vaultFile;
+}
+
+/**
+ * Download the vault file
+ * @param {string} jsonData - The JSON data to save
+ * @returns {Promise<boolean>} True if download was successful
+ */
+export async function downloadVaultFile(jsonData) {
+  return new Promise((resolve) => {
+    try {
+      // Create a blob from the JSON data
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      // Create a download link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `secure-vault-${new Date().toISOString().split('T')[0]}.vault`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      console.log("Vault file downloaded");
+      resolve(true);
+    } catch (error) {
+      console.error("Error downloading vault file:", error);
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Read the vault file
+ * @param {File} file - The file to read
+ * @returns {Promise<string>} The file content
+ */
+export function readVaultFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = (event) => {
+      resolve(event.target.result);
+    };
+    
+    reader.onerror = (error) => {
+      console.error("Error reading vault file:", error);
+      reject(error);
+    };
+    
+    reader.readAsText(file);
+  });
+}
+
+/**
+ * Import database from a file with password
+ * @param {File} file - The file to import
+ * @param {string} password - The password for the file
+ * @returns {Promise<boolean>} True if import was successful
+ */
+export async function importDatabaseWithPassword(file, password) {
+  try {
+    // Read the file
+    const fileContent = await readVaultFile(file);
+    if (!fileContent) {
+      throw new Error("Failed to read vault file");
+    }
+    
+    // Parse the JSON
+    const vaultFileObj = JSON.parse(fileContent);
+    
+    // Validate the file format
+    if (vaultFileObj.type !== 'secure-vault' || !vaultFileObj.data) {
+      throw new Error("Invalid vault file format");
+    }
+    
+    // Derive key from password
+    const key = deriveKeyFromPassword(password);
+    if (!key) {
+      throw new Error("Failed to derive key from password");
+    }
+    
+    // Set the encryption key
+    setEncryptionKey(key);
+    
+    // Set the vault file
+    setVaultFile(file);
+    
+    // Try to decrypt
+    const decryptedData = decryptData(vaultFileObj.data);
+    if (!decryptedData) {
+      throw new Error("Failed to decrypt vault data - incorrect password");
+    }
+    
+    // Store the decrypted data
+    vaultData = decryptedData;
+    
+    console.log("Vault file imported successfully");
+    return true;
+  } catch (error) {
+    console.error("Error importing vault file:", error);
     return false;
   }
 }
 
 // Export database module
 export default {
-  initializeDatabase,
-  closeDatabase,
-  createEmptyDatabase,
   setEncryptionKey,
   getEncryptionKey,
   deriveKeyFromPassword,
   validatePassword,
   encryptData,
   decryptData,
-  loadDatabase,
-  saveDatabase,
-  exportDatabase,
-  importDatabase,
-  changeEncryptionKey
+  saveToSecureStorage,
+  loadFromSecureStorage,
+  setVaultFile,
+  getVaultFile,
+  downloadVaultFile,
+  readVaultFile,
+  importDatabaseWithPassword
 }; 

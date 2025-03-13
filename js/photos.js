@@ -1,8 +1,14 @@
 // Import dependencies
 import { showNotification } from './ui.js';
+import { 
+  saveToSecureStorage, 
+  loadFromSecureStorage, 
+  getEncryptionKey 
+} from './database.js';
 
 // Current state
-let db = null;
+let db = { photos: {} };
+let pendingChanges = false;
 
 // Initialize photo manager
 export function initializePhotoManager(appState) {
@@ -14,29 +20,38 @@ export function initializePhotoManager(appState) {
   const photosContainer = document.getElementById('photos-container');
   const viewOptions = document.querySelectorAll('.view-option');
   
-  // Load database from localStorage
-  try {
-    const savedData = localStorage.getItem('markdown_vault_data');
-    if (savedData) {
-      db = JSON.parse(savedData);
-      console.log('Loaded data from localStorage for photos');
-    }
-  } catch (error) {
-    console.error('Error loading data from localStorage for photos:', error);
+  // Check if we have an encryption key
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    console.error('No encryption key available, photo manager initialization deferred');
+    return;
   }
   
-  // Initialize database structure if needed
-  if (!db) {
-    db = {};
-  }
-  
-  // Initialize photos section if needed
-  if (!db.photos) {
-    db.photos = {};
-  }
-  
-  // Render gallery
-  renderPhotoGallery(db.photos);
+  // Load data from secure storage
+  loadFromSecureStorage()
+    .then(data => {
+      if (data) {
+        // Initialize db with the loaded data
+        db = data;
+        if (!db.photos) {
+          db.photos = {};
+        }
+        console.log('Loaded photos from secure storage');
+        
+        // Render gallery
+        renderPhotoGallery(db.photos);
+      } else {
+        console.log('No data found in secure storage, initializing empty photo store');
+        db = { photos: {} };
+        renderPhotoGallery(db.photos);
+      }
+    })
+    .catch(error => {
+      console.error('Error loading data from secure storage:', error);
+      // Initialize with empty database if loading fails
+      db = { photos: {} };
+      renderPhotoGallery(db.photos);
+    });
   
   // Upload button click
   if (uploadPhotoBtn) {
@@ -81,11 +96,37 @@ export function initializePhotoManager(appState) {
     });
   }
   
+  // Listen for autosave events
+  window.addEventListener('vault:autosave', async () => {
+    console.log('Autosave triggered for photo manager');
+    if (pendingChanges) {
+      try {
+        const saveResult = await saveToSecureStorage(db);
+        
+        if (saveResult) {
+          console.log('Photos autosaved successfully');
+          pendingChanges = false;
+        } else {
+          console.error('Failed to autosave photos');
+        }
+      } catch (error) {
+        console.error('Error during photo autosave:', error);
+      }
+    }
+  });
+  
   console.log('Photo manager initialized');
 }
 
 // Upload photos
 async function uploadPhotos(fileList) {
+  // Check for encryption key
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    showNotification('Cannot upload photos - you must be logged in', 'error');
+    return false;
+  }
+  
   const promises = [];
   
   // Check if all files are images
@@ -103,13 +144,20 @@ async function uploadPhotos(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to localStorage
+  // Save to secure storage
   try {
-    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
-    console.log('Saved photos to localStorage');
-  } catch (localStorageError) {
-    console.error('Failed to save photos to localStorage:', localStorageError);
+    const saveResult = await saveToSecureStorage(db);
+    
+    if (!saveResult) {
+      throw new Error('Failed to save to secure storage');
+    }
+    
+    console.log('Photos saved to secure storage');
+    pendingChanges = false;
+  } catch (error) {
+    console.error('Failed to save photos:', error);
     showNotification('Error saving photos. Please try again.', 'error');
+    return false;
   }
   
   // Render the updated gallery
@@ -131,6 +179,12 @@ async function processPhoto(file) {
     reader.onload = async (e) => {
       img.onload = async () => {
         try {
+          // Optimize large images to save storage space
+          let optimizedContent = e.target.result;
+          if (file.size > 2 * 1024 * 1024) { // If larger than 2MB
+            optimizedContent = await optimizeImage(img, 1600); // Max width/height 1600px
+          }
+          
           // Create a photo object
           const photoObj = {
             id: generateId(),
@@ -140,14 +194,15 @@ async function processPhoto(file) {
             width: img.width,
             height: img.height,
             contentType: file.type,
-            content: e.target.result, // Full-size image
-            thumbnail: await createThumbnail(img), // Create thumbnail
+            content: optimizedContent, // Full-size image (optimized if large)
+            thumbnail: await createThumbnail(img, 200, 200, 0.7), // Create thumbnail with better quality
             created: new Date().toISOString(),
             modified: new Date().toISOString()
           };
           
           // Add to database
           db.photos[photoObj.id] = photoObj;
+          pendingChanges = true;
           
           resolve(true);
         } catch (error) {
@@ -173,8 +228,8 @@ async function processPhoto(file) {
   });
 }
 
-// Create a thumbnail
-async function createThumbnail(img, maxWidth = 200, maxHeight = 200) {
+// Create a thumbnail with better quality control
+async function createThumbnail(img, maxWidth = 200, maxHeight = 200, quality = 0.7) {
   return new Promise((resolve) => {
     // Create a canvas element
     const canvas = document.createElement('canvas');
@@ -203,10 +258,59 @@ async function createThumbnail(img, maxWidth = 200, maxHeight = 200) {
     // Draw the image on the canvas
     ctx.drawImage(img, 0, 0, width, height);
     
-    // Get the data URL from the canvas
-    const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    // Get the data URL from the canvas with specified quality
+    const thumbnailDataUrl = canvas.toDataURL('image/jpeg', quality);
     
     resolve(thumbnailDataUrl);
+  });
+}
+
+// Optimize an image by resizing it if needed
+async function optimizeImage(img, maxDimension = 1600, quality = 0.85) {
+  return new Promise((resolve) => {
+    // Check if image needs optimization
+    if (img.width <= maxDimension && img.height <= maxDimension) {
+      // Create a canvas with original dimensions but optimize quality
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, img.width, img.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+      return;
+    }
+    
+    // Create a canvas element
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Calculate new dimensions while maintaining aspect ratio
+    let width = img.width;
+    let height = img.height;
+    
+    if (width > height) {
+      if (width > maxDimension) {
+        height = Math.round(height * maxDimension / width);
+        width = maxDimension;
+      }
+    } else {
+      if (height > maxDimension) {
+        width = Math.round(width * maxDimension / height);
+        height = maxDimension;
+      }
+    }
+    
+    // Set canvas dimensions
+    canvas.width = width;
+    canvas.height = height;
+    
+    // Draw the image on the canvas
+    ctx.drawImage(img, 0, 0, width, height);
+    
+    // Get the data URL from the canvas
+    const optimizedDataUrl = canvas.toDataURL('image/jpeg', quality);
+    
+    resolve(optimizedDataUrl);
   });
 }
 
@@ -307,13 +411,25 @@ function confirmDeletePhoto(photo) {
 }
 
 // Delete photo
-function deletePhoto(photo) {
+async function deletePhoto(photo) {
+  // Check for encryption key
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    showNotification('Cannot delete photo - you must be logged in', 'error');
+    return false;
+  }
+  
   try {
     // Remove from database
     delete db.photos[photo.id];
+    pendingChanges = true;
     
-    // Save database
-    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    // Save to secure storage
+    const saveResult = await saveToSecureStorage(db);
+    
+    if (!saveResult) {
+      throw new Error('Failed to save changes to secure storage');
+    }
     
     // Update gallery
     renderPhotoGallery(db.photos);
@@ -321,6 +437,7 @@ function deletePhoto(photo) {
     // Show notification
     showNotification('Photo deleted successfully', 'success');
     
+    pendingChanges = false;
     return true;
   } catch (error) {
     console.error('Failed to delete photo:', error);

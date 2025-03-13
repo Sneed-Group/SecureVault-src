@@ -1,6 +1,6 @@
 // Import necessary modules
-import { initializeDatabase, closeDatabase, setEncryptionKey } from './database.js';
-import { initializeUI, toggleTheme } from './ui.js';
+import { setEncryptionKey, getEncryptionKey } from './database.js';
+import { initializeUI, toggleTheme, showNotification } from './ui.js';
 import { initializeAuth, checkAuthentication, AUTH_EVENTS } from './auth.js';
 import editorModule from './editor.js';
 import fileManagerModule from './files.js';
@@ -16,7 +16,6 @@ const appState = {
   currentSection: 'docs',
   currentFile: null,
   isAuthenticated: false,
-  dbInitialized: false,
   theme: 'light',
   editorFontSize: 'medium'
 };
@@ -33,45 +32,65 @@ export function initializeApp() {
   // Initialize authentication first
   initializeAuth();
   
-  // Check if already authenticated
-  if (checkAuthentication()) {
-    console.log('User is authenticated, initializing components...');
-    
-    // Get the session key
-    const sessionKey = sessionStorage.getItem('sessionKey');
-    
-    // Initialize database with the key
-    initializeDatabase();
-    setEncryptionKey(sessionKey);
-    
-    // Initialize the rest of the application
-    initializeAppComponents();
+  // Listen for authentication events
+  window.addEventListener(AUTH_EVENTS.LOGIN, handleLogin);
+  window.addEventListener(AUTH_EVENTS.LOGOUT, handleLogout);
+  
+  // Setup autosave feature
+  setupAutosave();
+  
+  // Setup the rest of the application UI
+  setupNavigationHandlers();
+  setupSettingsHandlers();
+  
+  console.log('App initialization setup complete');
+}
+
+/**
+ * Handle successful login
+ */
+function handleLogin(event) {
+  console.log('Login event detected, initializing app components...');
+  
+  // Get the encryption key from the event detail if available
+  if (event.detail && event.detail.key) {
+    setEncryptionKey(event.detail.key);
   }
   
-  // Listen for authentication events
-  window.addEventListener(AUTH_EVENTS.LOGIN, () => {
-    console.log('Login event detected, initializing app components...');
-    initializeAppComponents();
-  });
+  // Initialize app components
+  initializeAppComponents();
   
-  window.addEventListener(AUTH_EVENTS.LOGOUT, () => {
-    console.log('Logout event detected, shutting down app components...');
-    closeDatabase();
-    // Show auth screen - handled in auth.js
-  });
+  // Show success message
+  showNotification('Vault unlocked successfully', 'success');
+}
+
+/**
+ * Handle logout
+ */
+function handleLogout() {
+  console.log('Logout event detected, shutting down app components...');
+  
+  // Clear encryption key
+  setEncryptionKey(null);
+  
+  // Show auth screen - handled in auth.js
+  showNotification('You have been logged out', 'info');
 }
 
 /**
  * Initialize all application components
  */
 function initializeAppComponents() {
-  // Only initialize if user is authenticated
-  if (!checkAuthentication()) {
-    console.warn('Attempted to initialize components without authentication');
+  // Only initialize if we have a valid encryption key
+  if (!getEncryptionKey()) {
+    console.warn('Attempted to initialize components without encryption key');
     return;
   }
   
   console.log('Initializing UI components...');
+  
+  // Update app state
+  appState.isAuthenticated = true;
   
   // Initialize UI
   initializeUI(appState);
@@ -90,123 +109,145 @@ function initializeAppComponents() {
   console.log('App initialization complete');
 }
 
+/**
+ * Setup autosave functionality
+ */
+function setupAutosave() {
+  // Setup periodic save of vault file (every 5 minutes)
+  setInterval(() => {
+    if (appState.isAuthenticated && document.visibilityState === 'visible') {
+      console.log('Running autosave...');
+      
+      // Emit save event that components can listen for
+      const saveEvent = new CustomEvent('vault:autosave');
+      window.dispatchEvent(saveEvent);
+    }
+  }, 5 * 60 * 1000); // 5 minutes
+  
+  // Also save when user leaves the page
+  window.addEventListener('beforeunload', () => {
+    if (appState.isAuthenticated) {
+      const saveEvent = new CustomEvent('vault:autosave');
+      window.dispatchEvent(saveEvent);
+    }
+  });
+}
+
+/**
+ * Setup navigation handlers
+ */
+function setupNavigationHandlers() {
+  // Get navigation tabs
+  const navTabs = document.querySelectorAll('.nav-tabs li');
+  const contentSections = document.querySelectorAll('.content-section');
+  
+  // Add click event listeners to tabs
+  navTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Get the tab ID
+      const tabId = tab.getAttribute('data-tab');
+      
+      // Update active tab
+      navTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      
+      // Update active section
+      contentSections.forEach(section => {
+        if (section.id === tabId + '-section') {
+          section.classList.add('active');
+        } else {
+          section.classList.remove('active');
+        }
+      });
+      
+      // Update app state
+      appState.currentSection = tabId;
+    });
+  });
+}
+
+/**
+ * Setup settings handlers
+ */
+function setupSettingsHandlers() {
+  // Theme toggle
+  const themeToggle = document.getElementById('theme-toggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      // Toggle theme
+      appState.theme = appState.theme === 'light' ? 'dark' : 'light';
+      
+      // Update UI
+      toggleTheme(appState.theme);
+      
+      // Save preference
+      localStorage.setItem('mdvault_theme', appState.theme);
+    });
+  }
+  
+  // Font size settings
+  const fontSizeOptions = document.querySelectorAll('.font-size-option');
+  if (fontSizeOptions) {
+    fontSizeOptions.forEach(option => {
+      option.addEventListener('click', () => {
+        // Get the font size
+        const fontSize = option.getAttribute('data-size');
+        
+        // Update app state
+        appState.editorFontSize = fontSize;
+        
+        // Update UI
+        updateEditorFontSize(fontSize);
+        
+        // Update active option
+        fontSizeOptions.forEach(opt => opt.classList.remove('active'));
+        option.classList.add('active');
+        
+        // Save preference
+        localStorage.setItem('mdvault_font_size', fontSize);
+      });
+    });
+  }
+}
+
 // Load user preferences
 function loadPreferences() {
   try {
+    // Load theme
     const savedTheme = localStorage.getItem('mdvault_theme');
     if (savedTheme) {
       appState.theme = savedTheme;
     }
     
+    // Apply theme
+    toggleTheme(appState.theme);
+    
+    // Load font size
     const savedFontSize = localStorage.getItem('mdvault_font_size');
     if (savedFontSize) {
       appState.editorFontSize = savedFontSize;
+      updateEditorFontSize(savedFontSize);
     }
+    
+    console.log('Preferences loaded:', { theme: appState.theme, fontSize: appState.editorFontSize });
   } catch (error) {
-    console.error('Failed to load preferences:', error);
+    console.error('Error loading preferences:', error);
   }
 }
 
-// Save user preferences
-function savePreferences() {
-  try {
-    localStorage.setItem('mdvault_theme', appState.theme);
-    localStorage.setItem('mdvault_font_size', appState.editorFontSize);
-  } catch (error) {
-    console.error('Failed to save preferences:', error);
+// Update editor font size
+function updateEditorFontSize(size) {
+  const editor = document.getElementById('markdown-editor');
+  if (editor) {
+    // Remove existing size classes
+    editor.classList.remove('font-small', 'font-medium', 'font-large');
+    
+    // Add new size class
+    editor.classList.add(`font-${size}`);
   }
 }
 
-// Apply theme
-function applyTheme(theme) {
-  if (theme === 'dark') {
-    document.body.classList.add('dark-theme');
-  } else {
-    document.body.classList.remove('dark-theme');
-  }
-}
-
-// Event listener for theme change
-document.addEventListener('DOMContentLoaded', () => {
-  const themeSelect = document.getElementById('theme-select');
-  if (themeSelect) {
-    themeSelect.addEventListener('change', (event) => {
-      const newTheme = event.target.value;
-      appState.theme = newTheme;
-      applyTheme(newTheme);
-      savePreferences();
-    });
-  }
-  
-  const fontSizeSelect = document.getElementById('font-size');
-  if (fontSizeSelect) {
-    fontSizeSelect.addEventListener('change', (event) => {
-      appState.editorFontSize = event.target.value;
-      document.getElementById('markdown-editor').classList.remove('small', 'medium', 'large');
-      document.getElementById('markdown-editor').classList.add(appState.editorFontSize);
-      savePreferences();
-    });
-  }
-  
-  // Handle save password button
-  const savePasswordBtn = document.getElementById('save-password-btn');
-  if (savePasswordBtn) {
-    savePasswordBtn.addEventListener('click', () => {
-      const currentPassword = document.getElementById('current-password').value;
-      const newPassword = document.getElementById('new-password').value;
-      const confirmNewPassword = document.getElementById('confirm-new-password').value;
-      const passwordMessage = document.getElementById('password-message');
-      
-      // Validate inputs
-      if (!currentPassword || !newPassword || !confirmNewPassword) {
-        passwordMessage.textContent = 'Please fill in all fields';
-        passwordMessage.className = 'message error';
-        return;
-      }
-      
-      if (newPassword !== confirmNewPassword) {
-        passwordMessage.textContent = 'New passwords do not match';
-        passwordMessage.className = 'message error';
-        return;
-      }
-      
-      // Import the changePassword function
-      import('./auth.js').then(authModule => {
-        const success = authModule.changePassword(currentPassword, newPassword);
-        
-        if (success) {
-          passwordMessage.textContent = 'Password changed successfully';
-          passwordMessage.className = 'message success';
-          
-          // Clear the form
-          document.getElementById('current-password').value = '';
-          document.getElementById('new-password').value = '';
-          document.getElementById('confirm-new-password').value = '';
-          
-          // Close the modal after a delay
-          setTimeout(() => {
-            document.getElementById('password-modal').classList.remove('active');
-            passwordMessage.textContent = '';
-          }, 2000);
-        } else {
-          passwordMessage.textContent = 'Failed to change password. Make sure your current password is correct.';
-          passwordMessage.className = 'message error';
-        }
-      }).catch(error => {
-        console.error('Error importing auth module:', error);
-        passwordMessage.textContent = 'An error occurred. Please try again.';
-        passwordMessage.className = 'message error';
-      });
-    });
-  }
-});
-
-// Clean up resources when the page is unloaded
-window.addEventListener('beforeunload', () => {
-  closeDatabase();
-});
-
-// Initialize the app when the DOM is loaded
+// Initialize the app when DOM is ready
 document.addEventListener('DOMContentLoaded', initializeApp);
 
 // Export app module

@@ -1,13 +1,17 @@
 // Import dependencies
 import { marked } from 'marked';
-import { saveDatabase } from './database.js';
+import { 
+  saveToSecureStorage, 
+  loadFromSecureStorage, 
+  getEncryptionKey 
+} from './database.js';
 import { showNotification, refreshFileList } from './ui.js';
 import hljs from 'highlight.js';
 
 // Current editor state
 let currentFile = null;
 let isEditorDirty = false;
-let db = null;
+let db = { docs: {} };
 
 /**
  * Initialize the editor component
@@ -41,24 +45,36 @@ export function initializeEditor(appState) {
     sanitize: false
   });
   
-  // Try to load existing data from localStorage
-  try {
-    const savedData = localStorage.getItem('markdown_vault_data');
-    if (savedData) {
-      db = JSON.parse(savedData);
-      console.log('Loaded data from localStorage');
-    }
-  } catch (error) {
-    console.error('Error loading data from localStorage:', error);
+  // Check if we have an encryption key
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    console.error('No encryption key available, editor initialization deferred');
+    return;
   }
   
-  // Initialize the database structure if needed
-  if (!db) {
-    db = { docs: {} };
-  }
-  
-  // Update the file list
-  refreshFileList(db.docs, fileList, selectFile, confirmDeleteFile);
+  // Try to load existing data from secure storage
+  loadFromSecureStorage()
+    .then(data => {
+      if (data) {
+        // Initialize db with the loaded data
+        db = data;
+        if (!db.docs) {
+          db.docs = {};
+        }
+        console.log('Loaded documents from secure storage');
+        
+        // Update the file list
+        refreshFileList(db.docs, fileList, selectFile, confirmDeleteFile);
+      } else {
+        console.log('No data found in secure storage, initializing empty document store');
+        db = { docs: {} };
+      }
+    })
+    .catch(error => {
+      console.error('Error loading data from secure storage:', error);
+      // Initialize with empty database if loading fails
+      db = { docs: {} };
+    });
   
   // View mode buttons
   if (editModeBtn) {
@@ -155,6 +171,21 @@ export function initializeEditor(appState) {
     createNewButton.addEventListener('click', createNewDocument);
   }
   
+  // Listen for autosave events
+  window.addEventListener('vault:autosave', async () => {
+    console.log('Autosave triggered for editor');
+    if (isEditorDirty && currentFile) {
+      try {
+        const success = await saveCurrentFile(true);
+        if (success) {
+          console.log('Document autosaved successfully');
+        }
+      } catch (error) {
+        console.error('Error during autosave:', error);
+      }
+    }
+  });
+  
   // Window unload event - warn if unsaved changes
   window.addEventListener('beforeunload', event => {
     if (isEditorDirty) {
@@ -234,7 +265,7 @@ function applyFormat(format) {
 }
 
 // Save the current file
-async function saveCurrentFile() {
+async function saveCurrentFile(isAutosave = false) {
   console.log('Saving current file...');
   const editor = document.getElementById('markdown-editor');
   const fileList = document.getElementById('file-list');
@@ -244,9 +275,11 @@ async function saveCurrentFile() {
     return false;
   }
   
-  if (!db) {
-    console.error('Database not initialized');
-    db = { docs: {} };
+  // Check for encryption key
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    showNotification('Cannot save - you must be logged in', 'error');
+    return false;
   }
   
   try {
@@ -288,12 +321,11 @@ async function saveCurrentFile() {
       db.docs[currentFile.id] = currentFile;
     }
     
-    // Save to localStorage (temporary solution until we implement proper saving)
-    try {
-      localStorage.setItem('markdown_vault_data', JSON.stringify(db));
-      console.log('Saved to localStorage');
-    } catch (localStorageError) {
-      console.error('Failed to save to localStorage:', localStorageError);
+    // Save to secure storage using encryption
+    const saveResult = await saveToSecureStorage(db);
+    
+    if (!saveResult) {
+      throw new Error('Failed to save to secure storage');
     }
     
     // Clear dirty flag
@@ -307,14 +339,18 @@ async function saveCurrentFile() {
       confirmDeleteFile
     );
     
-    // Show notification
-    showNotification('Document saved successfully', 'success');
+    // Show notification only if not an autosave
+    if (!isAutosave) {
+      showNotification('Document saved successfully', 'success');
+    }
     
     console.log('File saved successfully');
     return true;
   } catch (error) {
     console.error('Failed to save document:', error);
-    showNotification('Failed to save document: ' + error.message, 'error');
+    if (!isAutosave) {
+      showNotification('Failed to save document: ' + error.message, 'error');
+    }
     return false;
   }
 }
@@ -396,6 +432,14 @@ function confirmDeleteFile(file) {
 // Delete a file
 async function deleteFile(file) {
   console.log('Deleting file:', file);
+  
+  // Check for encryption key
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    showNotification('Cannot delete - you must be logged in', 'error');
+    return false;
+  }
+  
   try {
     // If this is the current file, clear the editor
     if (currentFile && currentFile.id === file.id) {
@@ -411,12 +455,11 @@ async function deleteFile(file) {
     if (db && db.docs && db.docs[file.id]) {
       delete db.docs[file.id];
       
-      // Save to localStorage
-      try {
-        localStorage.setItem('markdown_vault_data', JSON.stringify(db));
-        console.log('Database saved to localStorage after deletion');
-      } catch (localStorageError) {
-        console.error('Failed to save to localStorage after deletion:', localStorageError);
+      // Save to secure storage
+      const saveResult = await saveToSecureStorage(db);
+      
+      if (!saveResult) {
+        throw new Error('Failed to save changes to secure storage');
       }
       
       // Update file list
