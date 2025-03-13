@@ -1,0 +1,11 @@
+{
+  "name": "securevault",
+  "version": "1.0.0",
+  "description": "Secure, local, encrypted document and file storage",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "SEE LICENSE IN LICENSE"
+} 

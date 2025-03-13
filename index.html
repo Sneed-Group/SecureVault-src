@@ -1,97 +1,197 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Markdown Vault</title>
-        <link rel="stylesheet" href="styles.css" />
-        <link rel="manifest" href="manifest.json" />
-        <link
-            rel="stylesheet"
-            href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"
-        />
-        <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    </head>
-    <body>
-        <div id="app">
-            <header>
-                <h1>SecureVault</h1>
-                <div id="auth-controls">
-                    <div id="not-logged-in">
-                        <input
-                            type="password"
-                            id="password"
-                            placeholder="Password"
-                        />
-                        <button id="unlock-btn">Unlock Vault</button>
-                        <button id="create-vault-btn">Create New Vault</button>
-                    </div>
-                    <div id="logged-in" style="display: none">
-                        <button id="lock-btn">Lock Vault</button>
-                        <button id="export-btn">Export Vault</button>
-                        <button id="import-btn">Import Vault</button>
-                        <input
-                            type="file"
-                            id="import-file"
-                            style="display: none"
-                        />
-                    </div>
-                </div>
-            </header>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4285f4">
+    <title>SecureVault - Secure Document & File Storage</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icons/favicon.ico" type="image/x-icon">
+    <!-- SimpleMDE for Markdown editing -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
+    <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
+    <!-- CryptoJS for encryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>SecureVault</h1>
+        <nav>
+            <ul>
+                <li><button id="nav-docs" class="nav-button active">Docs</button></li>
+                <li><button id="nav-photos" class="nav-button">Photos</button></li>
+                <li><button id="nav-files" class="nav-button">Files</button></li>
+            </ul>
+        </nav>
+        <div class="auth-controls">
+            <button id="btn-load">Load DB</button>
+            <button id="btn-save">Save DB</button>
+            <button id="btn-lock" class="hidden">Lock</button>
+        </div>
+    </header>
 
-            <div id="main-content" style="display: none">
-                <nav>
-                    <div class="tabs">
-                        <button class="tab-btn active" data-section="docs">
-                            Docs
-                        </button>
-                        <button class="tab-btn" data-section="photos">
-                            Photos
-                        </button>
-                        <button class="tab-btn" data-section="files">
-                            Files
-                        </button>
+    <main>
+        <!-- Auth Section -->
+        <section id="section-auth" class="section active">
+            <div class="container">
+                <h2>Welcome to SecureVault</h2>
+                <p>Secure, local, encrypted document and file storage</p>
+                
+                <div class="auth-form">
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" placeholder="Enter your encryption password">
                     </div>
-                    <div id="file-list"></div>
-                    <button id="new-file-btn">+ New Item</button>
-                </nav>
-
-                <div class="content-area">
-                    <div id="editor-section">
-                        <div id="file-toolbar">
-                            <input
-                                type="text"
-                                id="file-title"
-                                placeholder="Untitled"
-                            />
-                            <button id="save-btn">Save</button>
-                            <button id="delete-btn">Delete</button>
+                    
+                    <div class="auth-buttons">
+                        <button id="btn-create-new">Create New Database</button>
+                        <div class="or-divider">OR</div>
+                        <div class="file-upload-wrapper">
+                            <label for="db-file">Load Existing Database</label>
+                            <input type="file" id="db-file" accept=".securevault">
                         </div>
-                        <div id="editor-container"></div>
-                    </div>
-
-                    <div id="preview-section" class="hidden">
-                        <div id="preview-content"></div>
-                    </div>
-
-                    <div id="upload-section" class="hidden">
-                        <div id="drop-area">
-                            <p>Drag & drop files here or</p>
-                            <input type="file" id="file-input" />
-                            <label for="file-input">Choose files</label>
-                        </div>
-                        <div id="file-preview"></div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <script src="scripts/encryption.js"></script>
-        <script src="scripts/db.js"></script>
-        <script src="scripts/markdown.js"></script>
-        <script src="scripts/ui.js"></script>
-        <script src="scripts/app.js"></script>
-    </body>
-</html>
+        <!-- Docs Section -->
+        <section id="section-docs" class="section hidden">
+            <div class="container">
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <h3>Documents</h3>
+                        <button id="btn-new-doc" class="btn-new">+ New</button>
+                    </div>
+                    <ul id="docs-list" class="items-list">
+                        <!-- Document items will be inserted here -->
+                    </ul>
+                </div>
+                <div class="content">
+                    <div class="content-header">
+                        <input type="text" id="doc-title" placeholder="Untitled Document">
+                        <button id="btn-save-doc">Save</button>
+                    </div>
+                    <div class="editor-container">
+                        <textarea id="markdown-editor"></textarea>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Photos Section -->
+        <section id="section-photos" class="section hidden">
+            <div class="container">
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <h3>Photos</h3>
+                        <button id="btn-new-photo" class="btn-new">+ Add</button>
+                    </div>
+                    <ul id="photos-list" class="items-list">
+                        <!-- Photo items will be inserted here -->
+                    </ul>
+                </div>
+                <div class="content">
+                    <div class="photo-viewer">
+                        <img id="photo-display" src="" alt="">
+                        <div class="photo-info">
+                            <input type="text" id="photo-title" placeholder="Untitled Photo">
+                            <button id="btn-save-photo">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Files Section -->
+        <section id="section-files" class="section hidden">
+            <div class="container">
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <h3>Files</h3>
+                        <button id="btn-new-file" class="btn-new">+ Add</button>
+                    </div>
+                    <ul id="files-list" class="items-list">
+                        <!-- File items will be inserted here -->
+                    </ul>
+                </div>
+                <div class="content">
+                    <div class="file-viewer">
+                        <div class="file-info">
+                            <input type="text" id="file-title" placeholder="Untitled File">
+                            <div class="file-metadata">
+                                <span id="file-type"></span>
+                                <span id="file-size"></span>
+                            </div>
+                            <button id="btn-save-file">Save</button>
+                            <button id="btn-download-file">Download</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="hidden">
+        <div id="modal-container">
+            <div id="modal-new-item" class="modal hidden">
+                <h3>Create New Item</h3>
+                <div class="form-group">
+                    <label for="new-item-title">Title</label>
+                    <input type="text" id="new-item-title" placeholder="Enter title">
+                </div>
+                <div class="form-group file-input-group hidden">
+                    <label for="new-item-file">Select File</label>
+                    <input type="file" id="new-item-file">
+                </div>
+                <div class="modal-buttons">
+                    <button id="btn-modal-cancel">Cancel</button>
+                    <button id="btn-modal-create">Create</button>
+                </div>
+            </div>
+
+            <div id="modal-password" class="modal hidden">
+                <h3>Enter Password</h3>
+                <div class="form-group">
+                    <label for="modal-password-input">Password</label>
+                    <input type="password" id="modal-password-input" placeholder="Enter your encryption password">
+                </div>
+                <div class="modal-buttons">
+                    <button id="btn-modal-password-cancel">Cancel</button>
+                    <button id="btn-modal-password-confirm">Confirm</button>
+                </div>
+            </div>
+
+            <div id="modal-save-db" class="modal hidden">
+                <h3>Save Database</h3>
+                <p>Your database will be saved as an encrypted file.</p>
+                <div class="form-group">
+                    <label for="save-password">Confirm Password</label>
+                    <input type="password" id="save-password" placeholder="Enter your encryption password">
+                </div>
+                <div class="modal-buttons">
+                    <button id="btn-modal-save-cancel">Cancel</button>
+                    <button id="btn-modal-save-confirm">Save Database</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/crypto.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // Register service worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(reg => console.log('Service worker registered!', reg))
+                    .catch(err => console.log('Service worker registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html> 
