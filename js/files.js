@@ -1,10 +1,5 @@
 // Import dependencies
 import { showNotification } from './ui.js';
-import { 
-  saveToSecureStorage,
-  loadFromSecureStorage,
-  getEncryptionKey
-} from './database.js';
 
 // Current state
 let db = null;
@@ -19,23 +14,16 @@ export function initializeFileManager(appState) {
   const filesContainer = document.getElementById('files-container');
   const sortFilesSelect = document.getElementById('sort-files');
   
-  // Load data from secure storage
-  loadFromSecureStorage().then(data => {
-    if (data) {
-      db = data;
-      console.log('Loaded data from secure storage for files');
-      
-      // Initialize files section if needed
-      if (!db.files) {
-        db.files = {};
-      }
-      
-      // Render files list once data is loaded
-      renderFilesList(db.files);
+  // Load database from localStorage
+  try {
+    const savedData = localStorage.getItem('markdown_vault_data');
+    if (savedData) {
+      db = JSON.parse(savedData);
+      console.log('Loaded data from localStorage for files');
     }
-  }).catch(error => {
-    console.error('Error loading data from secure storage:', error);
-  });
+  } catch (error) {
+    console.error('Error loading data from localStorage for files:', error);
+  }
   
   // Initialize database structure if needed
   if (!db) {
@@ -46,6 +34,9 @@ export function initializeFileManager(appState) {
   if (!db.files) {
     db.files = {};
   }
+  
+  // Render files list
+  renderFilesList(db.files);
   
   // Upload button click
   if (uploadFileBtn) {
@@ -98,22 +89,12 @@ async function uploadFiles(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to secure storage
+  // Save to localStorage
   try {
-    // Save to secure vault
-    const encryptionKey = getEncryptionKey();
-    if (encryptionKey) {
-      const saveResult = await saveToSecureStorage(db);
-      if (saveResult) {
-        console.log('Saved files to secure storage');
-      } else {
-        throw new Error('Failed to save to secure storage');
-      }
-    } else {
-      throw new Error('Encryption key not available');
-    }
-  } catch (error) {
-    console.error('Failed to save files:', error);
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    console.log('Saved files to localStorage');
+  } catch (localStorageError) {
+    console.error('Failed to save files to localStorage:', localStorageError);
     showNotification('Error saving files. Please try again.', 'error');
   }
   
@@ -126,16 +107,13 @@ async function uploadFiles(fileList) {
   return successCount === fileList.length;
 }
 
-// Process a single file with size optimization for large files
+// Process a single file
 async function processFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
     reader.onload = async (e) => {
       try {
-        // For large files, we may want to optimize storage
-        const content = e.target.result;
-        
         // Create a file object
         const fileObj = {
           id: generateId(),
@@ -143,7 +121,7 @@ async function processFile(file) {
           type: 'file',
           size: file.size,
           contentType: file.type,
-          content: content,
+          content: e.target.result,
           created: new Date().toISOString(),
           modified: new Date().toISOString()
         };
@@ -346,21 +324,8 @@ function deleteFile(file) {
     // Remove from database
     delete db.files[file.id];
     
-    // Save to secure vault storage
-    const encryptionKey = getEncryptionKey();
-    if (encryptionKey) {
-      saveToSecureStorage(db)
-        .then(() => {
-          console.log('Saved changes to secure storage after deletion');
-        })
-        .catch(error => {
-          console.error('Failed to save to secure storage after deletion:', error);
-        });
-    } else {
-      console.error('Encryption key not available');
-      showNotification('Error: Encryption key not available', 'error');
-      return false;
-    }
+    // Save database
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
     
     // Update file list
     renderFilesList(db.files);
