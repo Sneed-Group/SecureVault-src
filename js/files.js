@@ -4,7 +4,8 @@ import {
   saveDatabase, 
   decryptData, 
   encryptData, 
-  getEncryptionKey 
+  getEncryptionKey,
+  saveToSecureStorage
 } from './database.js';
 
 // Current state
@@ -103,11 +104,9 @@ async function uploadFiles(fileList) {
     // Then encrypt and save to secure storage if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      const encrypted = encryptData(db);
-      if (encrypted) {
-        await saveDatabase();
-        console.log('Saved files to secure database');
-      }
+      // Use saveToSecureStorage to properly save to the secure database
+      await saveToSecureStorage(db);
+      console.log('Saved files to secure database');
     }
   } catch (error) {
     console.error('Failed to save files:', error);
@@ -346,11 +345,9 @@ function deleteFile(file) {
     // Save to secure database if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      const encrypted = encryptData(db);
-      if (encrypted) {
-        saveDatabase();
-        console.log('Saved changes to secure database after deletion');
-      }
+      // Use saveToSecureStorage to properly save to the secure database
+      saveToSecureStorage(db);
+      console.log('Saved changes to secure database after deletion');
     }
     
     // Update file list

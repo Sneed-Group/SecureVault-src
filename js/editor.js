@@ -268,11 +268,9 @@ async function saveCurrentFile() {
     // Save to secure storage if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      const encrypted = encryptData(db);
-      if (encrypted) {
-        await saveDatabase();
-        console.log('Saved to secure database');
-      }
+      // Use saveToSecureStorage to properly save to the secure database
+      await saveToSecureStorage(db);
+      console.log('Saved to secure database');
     }
     
     // Save to localStorage (temporary solution until we implement proper saving)
@@ -357,11 +355,9 @@ function createNewDocument() {
   // Save to secure storage if encryption key is available
   const encryptionKey = getEncryptionKey();
   if (encryptionKey) {
-    const encrypted = encryptData(db);
-    if (encrypted) {
-      saveDatabase();
-      console.log('New document saved to secure database');
-    }
+    // Use saveToSecureStorage to properly save to the secure database
+    saveToSecureStorage(db);
+    console.log('New document saved to secure database');
   }
   
   // Save to localStorage
@@ -445,11 +441,9 @@ async function deleteFile(file) {
     // Save to secure storage if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      const encrypted = encryptData(db);
-      if (encrypted) {
-        await saveDatabase();
-        console.log('Database saved to secure storage after deletion');
-      }
+      // Use saveToSecureStorage to properly save to the secure database
+      await saveToSecureStorage(db);
+      console.log('Database saved to secure storage after deletion');
     }
     
     // Save to localStorage
