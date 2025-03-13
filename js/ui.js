@@ -547,10 +547,17 @@ const SecureVaultUI = (function() {
         return;
       }
       
+      // Password validation
+      if (password.length < 8) {
+        alert('Password must be at least 8 characters long');
+        return;
+      }
+      
       SecureVaultStorage.createDatabase(password)
         .then(() => {
-          _updateAuthControls();
           _elements.auth.passwordInput.value = '';
+          // Use the dedicated method to properly initialize UI state
+          SecureVaultUI.onDatabaseLoaded();
         })
         .catch(error => {
           console.error('Error creating database:', error);
