@@ -4,9 +4,6 @@ import {
   deriveKeyFromPassword,
   validatePassword,
   setEncryptionKey,
-  createEmptyDatabase,
-  importDatabase,
-  initializeDatabase,
   encryptData,
   decryptData,
   saveToSecureStorage,
@@ -97,13 +94,17 @@ export async function createUser(password) {
     const encryptionKeySet = setEncryptionKey(derivedKey);
     console.log("Encryption key set:", encryptionKeySet);
     
-    // Initialize and create empty database
-    const dbInitialized = initializeDatabase();
-    console.log("Database initialized:", dbInitialized);
+    // Create empty vault structure
+    const emptyVault = {
+      docs: {},
+      photos: {},
+      files: {},
+      auth: authData
+    };
     
-    // Call createEmptyDatabase with await since it's async
-    const dbCreated = await createEmptyDatabase();
-    console.log("Empty database created:", dbCreated);
+    // Save the vault to secure storage
+    const saved = await saveToSecureStorage(emptyVault);
+    console.log("Empty vault created:", saved);
     
     // Dispatch login event
     window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
@@ -157,10 +158,6 @@ export function authenticateUser(password) {
       // Set the encryption key for the database
       const encryptionKeySet = setEncryptionKey(derivedKey);
       console.log("Encryption key set:", encryptionKeySet);
-      
-      // Initialize database
-      const dbInitialized = initializeDatabase();
-      console.log("Database initialized:", dbInitialized);
       
       // Dispatch login event
       window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
@@ -259,8 +256,8 @@ export async function handleDatabaseImport(file, password) {
     
     if (!created) return false;
     
-    // Import the database
-    const imported = await importDatabase(file);
+    // Use the importDatabaseWithPassword function from database.js
+    const imported = await importDatabaseWithPassword(file, password);
     console.log("Database imported:", imported);
     
     return imported;
@@ -525,38 +522,6 @@ export function initializeAuth() {
       const importModal = document.getElementById('import-modal');
       if (importModal) {
         importModal.classList.add('active');
-        
-        // Store the file reference for later use
-        importFileInput._selectedFile = file;
-      } else {
-        // If no modal exists, proceed with direct password prompt
-        const password = prompt('Enter password for the vault:');
-        
-        if (!password) {
-          showAuthMessage('Please enter a password for the imported vault', 'error');
-          return;
-        }
-        
-        try {
-          importDbBtn.disabled = true;
-          importDbBtn.textContent = 'Importing...';
-          
-          const imported = await importDatabaseWithPassword(file, password);
-          
-          if (imported) {
-            authScreen.classList.remove('active');
-            mainScreen.classList.add('active');
-            showAuthMessage('Vault imported successfully', 'success');
-          } else {
-            showAuthMessage('Error importing vault', 'error');
-          }
-        } catch (error) {
-          console.error('Import error:', error);
-          showAuthMessage('Error importing vault: ' + error.message, 'error');
-        } finally {
-          importDbBtn.disabled = false;
-          importDbBtn.textContent = 'Import Vault';
-        }
       }
     });
   }
@@ -572,6 +537,77 @@ export function initializeAuth() {
     console.log('User logged out');
   });
   
+  // Add event listener for the import confirmation button
+  const importConfirmBtn = document.getElementById('import-confirm-btn');
+  if (importConfirmBtn) {
+    importConfirmBtn.addEventListener('click', async () => {
+      console.log('Import confirmation button clicked');
+      const importFileInput = document.getElementById('db-import');
+      console.log('Import file input found:', !!importFileInput);
+      
+      // Get the file and password
+      const file = importFileInput ? importFileInput.files[0] : null;
+      console.log('File selected:', !!file);
+      const password = document.getElementById('import-password').value.trim();
+      
+      // Validate
+      if (!file) {
+        showAuthMessage('Please select a vault file', 'error');
+        return;
+      }
+      
+      if (!password) {
+        showAuthMessage('Please enter a password', 'error');
+        return;
+      }
+      
+      // Disable button during import
+      importConfirmBtn.disabled = true;
+      importConfirmBtn.textContent = 'Importing...';
+      
+      try {
+        // Use the imported function
+        const imported = await importDatabaseWithPassword(file, password);
+        console.log('Import result:', imported);
+        
+        if (imported) {
+          // Close the modal
+          document.getElementById('import-modal').classList.remove('active');
+          
+          // Hide auth screen, show main screen
+          authScreen.classList.remove('active');
+          mainScreen.classList.add('active');
+          
+          // Show success message
+          showAuthMessage('Vault imported successfully', 'success');
+        } else {
+          showAuthMessage('Error importing vault. Invalid password or corrupted file.', 'error');
+        }
+      } catch (error) {
+        console.error('Import error:', error);
+        showAuthMessage('Error importing vault: ' + error.message, 'error');
+      } finally {
+        // Reset button
+        importConfirmBtn.disabled = false;
+        importConfirmBtn.textContent = 'Import';
+      }
+    });
+  }
+  
+  // Add event listeners for closing the import modal
+  const importModal = document.getElementById('import-modal');
+  const closeModalButtons = document.querySelectorAll('#import-modal .close-modal');
+  if (closeModalButtons.length > 0) {
+    closeModalButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        // Close the modal
+        if (importModal) {
+          importModal.classList.remove('active');
+        }
+      });
+    });
+  }
+  
   // Check if user is already authenticated
   if (checkAuthentication()) {
     // Get the session key
@@ -579,9 +615,6 @@ export function initializeAuth() {
     
     // Set the encryption key
     setEncryptionKey(sessionKey);
-    
-    // Initialize the database
-    initializeDatabase();
     
     // Show main screen
     authScreen.classList.remove('active');
