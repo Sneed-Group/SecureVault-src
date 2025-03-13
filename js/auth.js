@@ -239,12 +239,12 @@ export function logoutUser() {
 }
 
 /**
- * Import database with password
+ * Import database with password (local implementation)
  * @param {File} file - The file to import
  * @param {string} password - The password for decryption
  * @returns {Promise<boolean>} True if import was successful
  */
-export async function importDatabaseWithPassword(file, password) {
+export async function handleDatabaseImport(file, password) {
   if (!file || !password) {
     console.error("Import error: Missing file or password");
     return false;
@@ -602,6 +602,15 @@ export function initializeAuth() {
     }, 3000);
   }
   
+  // Helper function to clear auth messages
+  function clearAuthMessages() {
+    const messageContainer = document.getElementById('auth-message');
+    if (messageContainer) {
+      messageContainer.textContent = '';
+      messageContainer.className = 'message';
+    }
+  }
+  
   console.log('Authentication initialized');
 }
 
@@ -615,7 +624,7 @@ export async function login(password, vaultFile) {
   try {
     console.log('Attempting login...');
     
-    // Import the database with the provided password
+    // Use the imported function from database.js
     const success = await importDatabaseWithPassword(vaultFile, password);
     
     if (success) {
@@ -730,4 +739,5 @@ export default {
   logout,
   isAuthenticated: () => isAuthenticated,
   getUsername: () => username,
+  handleDatabaseImport
 }; 
