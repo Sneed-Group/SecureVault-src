@@ -2,305 +2,404 @@
 import CryptoJS from 'crypto-js';
 import Dexie from 'dexie';
 
-// Database instance
-let db;
-
-// Current encryption key
-let encryptionKey = null;
-
-// Database definition
+// Database class for storing encrypted vault data
 class VaultDatabase extends Dexie {
   constructor() {
     super('MarkdownVault');
-    
     this.version(1).stores({
-      meta: 'id, lastUpdated',
-      data: 'id, encryptedData'
+      meta: 'id',
+      data: 'id, type, name, updatedAt'
     });
   }
 }
 
-// Initialize the database
-async function initializeDatabase() {
-  db = new VaultDatabase();
-  
-  // Check if the database already exists
-  const metaRecord = await db.meta.get(1);
-  if (!metaRecord) {
-    // Create initial empty database
-    await createEmptyDatabase();
+let db = null;
+let encryptionKey = null;
+let dbInitialized = false;
+
+/**
+ * Initialize the database
+ */
+export function initializeDatabase() {
+  if (!db) {
+    console.log("Initializing database...");
+    db = new VaultDatabase();
+    dbInitialized = true;
+    return true;
   }
+  return false;
+}
+
+/**
+ * Close the database connection
+ */
+export function closeDatabase() {
+  if (db) {
+    db.close();
+    db = null;
+    encryptionKey = null;
+    dbInitialized = false;
+  }
+}
+
+/**
+ * Create empty database structure
+ */
+export async function createEmptyDatabase() {
+  if (!db) initializeDatabase();
   
-  console.log('Database initialized');
+  try {
+    // Clear any existing data
+    await db.meta.clear();
+    await db.data.clear();
+    
+    // Create metadata record
+    await db.meta.put({
+      id: 'metadata',
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log("Empty database created successfully");
+    return true;
+  } catch (error) {
+    console.error("Error creating empty database:", error);
+    return false;
+  }
+}
+
+/**
+ * Set the encryption key
+ * @param {string} key - The encryption key to set
+ */
+export function setEncryptionKey(key) {
+  if (!key) return false;
+  encryptionKey = key;
   return true;
 }
 
-// Close the database
-function closeDatabase() {
-  if (db) {
-    db.close();
-    console.log('Database closed');
-  }
-}
-
-// Create an empty database structure
-async function createEmptyDatabase() {
-  const emptyDb = {
-    docs: {},
-    photos: {},
-    files: {}
-  };
-  
-  await db.meta.put({
-    id: 1,
-    lastUpdated: new Date().toISOString()
-  });
-  
-  // Save the empty database (will be encrypted in saveDatabase)
-  await saveDatabase(emptyDb);
-  
-  console.log('Empty database created');
-}
-
-// Set the encryption key
-function setEncryptionKey(key) {
-  encryptionKey = key;
-  return !!key; // Return true if key is set
-}
-
-// Get the current encryption key
-function getEncryptionKey() {
+/**
+ * Get the encryption key
+ */
+export function getEncryptionKey() {
   return encryptionKey;
 }
 
-// Derive a secure key from the password
-async function deriveKeyFromPassword(password) {
-  // Use PBKDF2 for key derivation
-  const salt = CryptoJS.lib.WordArray.random(128/8);
-  const iterations = 10000;
-  const keySize = 256 / 32;
-  
+/**
+ * Derive an encryption key from a password
+ * @param {string} password - The password to derive the key from
+ * @param {string} salt - Optional salt for key derivation
+ * @returns {string} The derived key
+ */
+export function deriveKeyFromPassword(password, salt = 'MarkdownVaultSalt') {
+  if (!password) return null;
+  // Use PBKDF2 to derive a strong key from the password
   const key = CryptoJS.PBKDF2(password, salt, {
-    keySize: keySize,
-    iterations: iterations
+    keySize: 256 / 32,
+    iterations: 10000
   });
-  
-  return {
-    key: key.toString(),
-    salt: salt.toString(),
-    iterations: iterations
-  };
+  return key.toString();
 }
 
-// Validate a password against stored salt and iterations
-async function validatePassword(password, storedKey, storedSalt, storedIterations) {
-  const keySize = 256 / 32;
+/**
+ * Validate a password against stored authentication data
+ * @param {string} password - The password to validate
+ * @param {object} authData - The stored authentication data
+ * @returns {boolean} True if password is valid
+ */
+export function validatePassword(password, authData) {
+  if (!password || !authData) return false;
   
-  const derivedKey = CryptoJS.PBKDF2(password, storedSalt, {
-    keySize: keySize,
-    iterations: storedIterations
-  });
-  
-  return derivedKey.toString() === storedKey;
-}
-
-// Encrypt data with the current encryption key
-function encryptData(data) {
-  if (!encryptionKey) {
-    throw new Error('Encryption key not set');
-  }
-  
-  const jsonString = JSON.stringify(data);
-  
-  // Use AES-GCM equivalent (AES + HMAC) for encryption
-  const encrypted = CryptoJS.AES.encrypt(jsonString, encryptionKey).toString();
-  
-  // Add HMAC for integrity verification
-  const hmac = CryptoJS.HmacSHA256(encrypted, encryptionKey).toString();
-  
-  return {
-    data: encrypted,
-    hmac: hmac
-  };
-}
-
-// Decrypt data with the current encryption key
-function decryptData(encryptedData, hmac) {
-  if (!encryptionKey) {
-    throw new Error('Encryption key not set');
-  }
-  
-  // Verify HMAC for integrity
-  const calculatedHmac = CryptoJS.HmacSHA256(encryptedData, encryptionKey).toString();
-  if (calculatedHmac !== hmac) {
-    throw new Error('Data integrity check failed');
-  }
-  
-  // Decrypt the data
-  const bytes = CryptoJS.AES.decrypt(encryptedData, encryptionKey);
-  const decryptedJson = bytes.toString(CryptoJS.enc.Utf8);
-  
-  if (!decryptedJson) {
-    throw new Error('Failed to decrypt data');
-  }
-  
-  return JSON.parse(decryptedJson);
-}
-
-// Load and decrypt the database
-async function loadDatabase() {
   try {
-    // Load the encrypted data from IndexedDB
-    const encryptedRecord = await db.data.get(1);
+    const derivedKey = deriveKeyFromPassword(password, authData.salt);
+    const keyHash = CryptoJS.SHA256(derivedKey).toString();
     
-    if (!encryptedRecord) {
-      throw new Error('No database found');
+    return keyHash === authData.keyHash;
+  } catch (error) {
+    console.error("Error validating password:", error);
+    return false;
+  }
+}
+
+/**
+ * Encrypt data using the encryption key
+ * @param {object} data - The data to encrypt
+ * @returns {string} The encrypted data
+ */
+export function encryptData(data) {
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return null;
+  }
+  
+  try {
+    const jsonData = JSON.stringify(data);
+    const encrypted = CryptoJS.AES.encrypt(jsonData, encryptionKey).toString();
+    return encrypted;
+  } catch (error) {
+    console.error("Error encrypting data:", error);
+    return null;
+  }
+}
+
+/**
+ * Decrypt data using the encryption key
+ * @param {string} encryptedData - The encrypted data to decrypt
+ * @returns {object} The decrypted data
+ */
+export function decryptData(encryptedData) {
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return null;
+  }
+  
+  try {
+    const decrypted = CryptoJS.AES.decrypt(encryptedData, encryptionKey);
+    const jsonData = decrypted.toString(CryptoJS.enc.Utf8);
+    return JSON.parse(jsonData);
+  } catch (error) {
+    console.error("Error decrypting data:", error);
+    return null;
+  }
+}
+
+/**
+ * Load database from encrypted data
+ * @param {string} encryptedData - The encrypted database data
+ * @returns {boolean} True if database was loaded successfully
+ */
+export async function loadDatabase(encryptedData) {
+  if (!db) initializeDatabase();
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return false;
+  }
+  
+  try {
+    const decrypted = decryptData(encryptedData);
+    if (!decrypted) return false;
+    
+    // Clear any existing data
+    await db.meta.clear();
+    await db.data.clear();
+    
+    // Load metadata
+    if (decrypted.meta) {
+      await db.meta.put(decrypted.meta);
     }
     
-    // Decrypt the database
-    const decryptedData = decryptData(
-      encryptedRecord.encryptedData.data,
-      encryptedRecord.encryptedData.hmac
-    );
+    // Load data records
+    if (decrypted.data && Array.isArray(decrypted.data)) {
+      await db.data.bulkPut(decrypted.data);
+    }
     
-    console.log('Database loaded and decrypted successfully');
-    return decryptedData;
-  } catch (error) {
-    console.error('Failed to load database:', error);
-    throw error;
-  }
-}
-
-// Save and encrypt the database
-async function saveDatabase(data) {
-  try {
-    // Update the last modified timestamp
-    await db.meta.update(1, { lastUpdated: new Date().toISOString() });
-    
-    // Encrypt the database
-    const encryptedData = encryptData(data);
-    
-    // Save to IndexedDB
-    await db.data.put({
-      id: 1,
-      encryptedData: encryptedData
-    });
-    
-    console.log('Database saved and encrypted successfully');
+    console.log("Database loaded successfully");
     return true;
   } catch (error) {
-    console.error('Failed to save database:', error);
-    throw error;
+    console.error("Error loading database:", error);
+    return false;
   }
 }
 
-// Export database to a file
-async function exportDatabase() {
+/**
+ * Save database to encrypted data
+ * @returns {string} The encrypted database data
+ */
+export async function saveDatabase() {
+  if (!db) {
+    console.error("Database not initialized");
+    return null;
+  }
+  
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return null;
+  }
+  
   try {
-    // Get the encrypted database record
-    const encryptedRecord = await db.data.get(1);
+    // Get metadata
+    const meta = await db.meta.get('metadata');
     
-    if (!encryptedRecord) {
-      throw new Error('No database to export');
-    }
+    // Get all data records
+    const data = await db.data.toArray();
     
-    // Get the metadata
-    const meta = await db.meta.get(1);
-    
-    // Create an export object with metadata and encrypted data
-    const exportData = {
-      version: 1,
-      timestamp: new Date().toISOString(),
-      lastUpdated: meta.lastUpdated,
-      encryptedData: encryptedRecord.encryptedData
+    // Create the database object
+    const databaseObj = {
+      meta,
+      data
     };
     
-    // Convert to JSON string
-    const jsonString = JSON.stringify(exportData);
+    // Encrypt the database
+    const encrypted = encryptData(databaseObj);
     
-    // Create a Blob for download
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+    // Update metadata
+    await db.meta.update('metadata', { updatedAt: new Date().toISOString() });
+    
+    return encrypted;
+  } catch (error) {
+    console.error("Error saving database:", error);
+    return null;
+  }
+}
+
+/**
+ * Export database to a file
+ * @returns {boolean} True if export was successful
+ */
+export async function exportDatabase() {
+  if (!dbInitialized) {
+    console.error("Database not initialized");
+    return false;
+  }
+  
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return false;
+  }
+  
+  try {
+    // Save the database to encrypted data
+    const encryptedData = await saveDatabase();
+    if (!encryptedData) return false;
+    
+    // Get metadata
+    const meta = await db.meta.get('metadata');
+    
+    // Create the export object
+    const exportObj = {
+      type: 'markdown-vault-export',
+      version: 1,
+      timestamp: new Date().toISOString(),
+      data: encryptedData
+    };
+    
+    // Convert to JSON
+    const jsonData = JSON.stringify(exportObj);
     
     // Create a download link
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `markdown-vault-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `markdown-vault-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
     a.click();
-    
-    // Clean up
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    console.log('Database exported successfully');
+    console.log("Database exported successfully");
     return true;
   } catch (error) {
-    console.error('Failed to export database:', error);
-    throw error;
+    console.error("Error exporting database:", error);
+    return false;
   }
 }
 
-// Import database from a file
-async function importDatabase(fileContent) {
+/**
+ * Import database from a file
+ * @param {File} file - The file to import
+ * @returns {boolean} True if import was successful
+ */
+export async function importDatabase(file) {
+  if (!dbInitialized) {
+    console.error("Database not initialized");
+    return false;
+  }
+  
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return false;
+  }
+  
   try {
-    // Parse the file content
-    const importData = JSON.parse(fileContent);
+    // Read the file
+    const reader = new FileReader();
     
-    // Check version
-    if (!importData.version || importData.version !== 1) {
-      throw new Error('Unsupported database version');
-    }
-    
-    // Update the database
-    await db.data.put({
-      id: 1,
-      encryptedData: importData.encryptedData
+    return new Promise((resolve, reject) => {
+      reader.onload = async (event) => {
+        try {
+          const jsonData = event.target.result;
+          const importObj = JSON.parse(jsonData);
+          
+          // Validate the import object
+          if (importObj.type !== 'markdown-vault-export' || !importObj.data) {
+            console.error("Invalid import file format");
+            resolve(false);
+            return;
+          }
+          
+          // Load the database
+          const success = await loadDatabase(importObj.data);
+          resolve(success);
+        } catch (error) {
+          console.error("Error parsing import file:", error);
+          resolve(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        console.error("Error reading import file");
+        resolve(false);
+      };
+      
+      reader.readAsText(file);
     });
-    
-    // Update the metadata
-    await db.meta.put({
-      id: 1,
-      lastUpdated: importData.lastUpdated || new Date().toISOString()
-    });
-    
-    console.log('Database imported successfully');
-    return true;
   } catch (error) {
-    console.error('Failed to import database:', error);
-    throw error;
+    console.error("Error importing database:", error);
+    return false;
   }
 }
 
-// Change the encryption key (reencrypt all data)
-async function changeEncryptionKey(newKey) {
+/**
+ * Change the encryption key
+ * @param {string} newKey - The new encryption key
+ * @returns {boolean} True if key was changed successfully
+ */
+export async function changeEncryptionKey(newKey) {
+  if (!dbInitialized) {
+    console.error("Database not initialized");
+    return false;
+  }
+  
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return false;
+  }
+  
+  if (!newKey) {
+    console.error("New key is invalid");
+    return false;
+  }
+  
   try {
-    // Load the database with the current key
-    const data = await loadDatabase();
+    // Save the database with the current key
+    const encryptedData = await saveDatabase();
+    if (!encryptedData) return false;
     
-    // Set the new encryption key
-    const oldKey = encryptionKey;
+    // Set the new key
     encryptionKey = newKey;
     
-    // Reencrypt and save with the new key
-    await saveDatabase(data);
-    
-    console.log('Encryption key changed successfully');
-    return true;
+    // Load the database with the new key
+    const success = await loadDatabase(encryptedData);
+    return success;
   } catch (error) {
-    // Restore the old key on failure
-    encryptionKey = oldKey;
-    console.error('Failed to change encryption key:', error);
-    throw error;
+    console.error("Error changing encryption key:", error);
+    return false;
   }
 }
 
-// Export functions and constants
-export {
+// Export database module
+export default {
   initializeDatabase,
   closeDatabase,
+  createEmptyDatabase,
   setEncryptionKey,
   getEncryptionKey,
   deriveKeyFromPassword,
   validatePassword,
+  encryptData,
+  decryptData,
   loadDatabase,
   saveDatabase,
   exportDatabase,

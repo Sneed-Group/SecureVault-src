@@ -1,7 +1,7 @@
 // Import necessary modules
-import { initializeDatabase, closeDatabase } from './database.js';
+import { initializeDatabase, closeDatabase, setEncryptionKey } from './database.js';
 import { initializeUI, toggleTheme } from './ui.js';
-import { initializeAuth, checkAuthentication } from './auth.js';
+import { initializeAuth, checkAuthentication, AUTH_EVENTS } from './auth.js';
 import { initializeEditor } from './editor.js';
 import { initializeFileManager } from './files.js';
 import { initializePhotoManager } from './photos.js';
@@ -16,52 +16,69 @@ const appState = {
   editorFontSize: 'medium'
 };
 
-// Initialize the application
-async function initializeApp() {
+/**
+ * Initialize the application
+ */
+export function initializeApp() {
   console.log('Initializing app...');
   
-  // Check if user is authenticated
-  const isAuthenticated = await checkAuthentication();
-  appState.isAuthenticated = isAuthenticated;
+  // Initialize authentication first
+  initializeAuth();
   
-  // Initialize the UI
-  initializeUI(appState);
-  
-  // Initialize authentication
-  initializeAuth(appState);
-  
-  // If authenticated, initialize database and other components
-  if (isAuthenticated) {
-    await initializeAppComponents();
+  // Check if already authenticated
+  if (checkAuthentication()) {
+    console.log('User is authenticated, initializing components...');
+    
+    // Get the session key
+    const sessionKey = sessionStorage.getItem('sessionKey');
+    
+    // Initialize database with the key
+    initializeDatabase();
+    setEncryptionKey(sessionKey);
+    
+    // Initialize the rest of the application
+    initializeAppComponents();
   }
   
-  // Load user preferences
-  loadPreferences();
+  // Listen for authentication events
+  window.addEventListener(AUTH_EVENTS.LOGIN, () => {
+    console.log('Login event detected, initializing app components...');
+    initializeAppComponents();
+  });
   
-  // Apply initial theme
-  applyTheme(appState.theme);
+  window.addEventListener(AUTH_EVENTS.LOGOUT, () => {
+    console.log('Logout event detected, shutting down app components...');
+    // Any cleanup needed for components on logout
+  });
 }
 
-// Initialize app components after authentication
-async function initializeAppComponents() {
-  try {
-    // Initialize database
-    await initializeDatabase();
-    appState.dbInitialized = true;
-    
-    // Initialize editor
-    initializeEditor(appState);
-    
-    // Initialize file manager
-    initializeFileManager(appState);
-    
-    // Initialize photo manager
-    initializePhotoManager(appState);
-    
-    console.log('App components initialized successfully');
-  } catch (error) {
-    console.error('Failed to initialize app components:', error);
+/**
+ * Initialize all application components
+ */
+function initializeAppComponents() {
+  // Only initialize if user is authenticated
+  if (!checkAuthentication()) {
+    console.warn('Attempted to initialize components without authentication');
+    return;
   }
+  
+  console.log('Initializing UI components...');
+  
+  // Initialize UI
+  initializeUI(appState);
+  
+  // Initialize content modules
+  initializeEditor(appState);
+  initializeFileManager(appState);
+  initializePhotoManager(appState);
+  
+  // Show the first tab as active (docs)
+  const defaultTab = document.querySelector('.nav-tabs li[data-tab="docs"]');
+  if (defaultTab) {
+    defaultTab.click();
+  }
+  
+  console.log('App initialization complete');
 }
 
 // Load user preferences
@@ -130,6 +147,11 @@ window.addEventListener('beforeunload', () => {
 
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', initializeApp);
+
+// Export app module
+export default {
+  initializeApp
+};
 
 // Export the app state
 export { appState }; 

@@ -1,93 +1,142 @@
 // Import modules
 import { exportDatabase } from './database.js';
-import { logoutUser } from './auth.js';
+import { logoutUser, checkAuthentication } from './auth.js';
 
-// Initialize UI
-function initializeUI(appState) {
-  // Initialize tab navigation
-  initializeTabs(appState);
-  
-  // Initialize settings
-  initializeSettings(appState);
-  
-  // Initialize modal functionality
+/**
+ * Initialize the UI
+ */
+export function initializeUI() {
+  initializeTabs();
+  initializeSettings();
   initializeModals();
   
-  // Listen for authentication events
-  window.addEventListener('auth:login', () => {
-    console.log('User authenticated, initializing app components');
-  });
-  
-  console.log('UI initialized');
+  // Add notification container if it doesn't exist
+  if (!document.querySelector('.notification-container')) {
+    const container = document.createElement('div');
+    container.className = 'notification-container';
+    document.body.appendChild(container);
+  }
 }
 
-// Initialize tabs
-function initializeTabs(appState) {
-  const tabItems = document.querySelectorAll('.nav-tabs li');
+/**
+ * Initialize tab navigation
+ */
+function initializeTabs() {
+  const tabs = document.querySelectorAll('.nav-tabs li');
   const contentSections = document.querySelectorAll('.content-section');
   
-  tabItems.forEach(tab => {
+  tabs.forEach(tab => {
     tab.addEventListener('click', () => {
-      // Get section name from data attribute
-      const sectionName = tab.getAttribute('data-section');
+      // Get the data-tab attribute
+      const tabId = tab.getAttribute('data-tab');
       
-      // Set active tab
-      tabItems.forEach(item => item.classList.remove('active'));
-      tab.classList.add('active');
-      
-      // Set active content section
+      // Remove active class from all tabs and content sections
+      tabs.forEach(t => t.classList.remove('active'));
       contentSections.forEach(section => section.classList.remove('active'));
-      document.getElementById(`${sectionName}-section`).classList.add('active');
       
-      // Update app state
-      appState.currentSection = sectionName;
+      // Add active class to current tab and content section
+      tab.classList.add('active');
+      document.getElementById(`${tabId}-section`).classList.add('active');
     });
   });
 }
 
-// Initialize settings
-function initializeSettings(appState) {
+/**
+ * Initialize settings
+ */
+function initializeSettings() {
   const settingsBtn = document.getElementById('settings-btn');
   const settingsModal = document.getElementById('settings-modal');
   const exportDbBtn = document.getElementById('export-db-btn');
-  const themeSelect = document.getElementById('theme-select');
-  const fontSizeSelect = document.getElementById('font-size');
+  const importDbBtn = document.getElementById('import-db-btn');
+  const importFileInput = document.getElementById('import-file-input');
+  const changePasswordBtn = document.getElementById('change-password-btn');
+  const logoutBtn = document.getElementById('logout-btn');
+  const themeToggle = document.getElementById('theme-toggle');
   
-  // Settings button click
+  // Handle settings button click
   if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {
       settingsModal.classList.add('active');
     });
   }
   
-  // Export database button
+  // Handle export database button click
   if (exportDbBtn) {
     exportDbBtn.addEventListener('click', async () => {
       try {
-        await exportDatabase();
+        // Check if authenticated
+        if (!checkAuthentication()) {
+          showNotification('You must be logged in to export', 'error');
+          return;
+        }
+        
+        const success = await exportDatabase();
+        
+        if (success) {
+          showNotification('Vault exported successfully', 'success');
+        } else {
+          showNotification('Error exporting vault', 'error');
+        }
       } catch (error) {
-        console.error('Failed to export database:', error);
-        alert('Failed to export database: ' + error.message);
+        console.error('Error exporting database:', error);
+        showNotification('Error exporting vault: ' + error.message, 'error');
       }
     });
   }
   
-  // Load saved preferences
-  if (themeSelect) {
-    themeSelect.value = appState.theme || 'light';
+  // Handle import database button click
+  if (importDbBtn && importFileInput) {
+    importDbBtn.addEventListener('click', () => {
+      importFileInput.click();
+    });
+    
+    importFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        // Show import confirmation modal
+        document.getElementById('import-modal').classList.add('active');
+      }
+    });
   }
   
-  if (fontSizeSelect) {
-    fontSizeSelect.value = appState.editorFontSize || 'medium';
+  // Handle change password button click
+  if (changePasswordBtn) {
+    changePasswordBtn.addEventListener('click', () => {
+      document.getElementById('password-modal').classList.add('active');
+    });
+  }
+  
+  // Handle logout button click
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      logoutUser();
+    });
+  }
+  
+  // Handle theme toggle
+  if (themeToggle) {
+    themeToggle.addEventListener('change', () => {
+      toggleTheme();
+    });
+    
+    // Set initial state
+    const darkMode = localStorage.getItem('darkMode') === 'true';
+    themeToggle.checked = darkMode;
+    if (darkMode) {
+      document.body.classList.add('dark-theme');
+    }
   }
 }
 
-// Initialize modals
+/**
+ * Initialize modals
+ */
 function initializeModals() {
   const modals = document.querySelectorAll('.modal');
   const closeButtons = document.querySelectorAll('.close-modal');
   
-  // Close when clicking the X button
+  // Close modal when close button is clicked
   closeButtons.forEach(button => {
     button.addEventListener('click', () => {
       const modal = button.closest('.modal');
@@ -95,139 +144,150 @@ function initializeModals() {
     });
   });
   
-  // Close when clicking outside the modal content
+  // Close modal when clicking outside the modal content
   modals.forEach(modal => {
-    modal.addEventListener('click', event => {
-      if (event.target === modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
         modal.classList.remove('active');
       }
     });
   });
-  
-  // Close with Escape key
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') {
-      modals.forEach(modal => {
-        if (modal.classList.contains('active')) {
-          modal.classList.remove('active');
-        }
-      });
-    }
-  });
 }
 
-// Toggle dark/light theme
-function toggleTheme(theme) {
-  if (theme === 'dark') {
-    document.body.classList.add('dark-theme');
-  } else if (theme === 'light') {
-    document.body.classList.remove('dark-theme');
-  } else if (theme === 'system') {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (prefersDark) {
-      document.body.classList.add('dark-theme');
-    } else {
-      document.body.classList.remove('dark-theme');
-    }
-  }
+/**
+ * Toggle dark/light theme
+ */
+export function toggleTheme() {
+  const body = document.body;
+  body.classList.toggle('dark-theme');
+  
+  // Save preference to localStorage
+  const isDarkMode = body.classList.contains('dark-theme');
+  localStorage.setItem('darkMode', isDarkMode);
 }
 
-// Show a notification
-function showNotification(message, type = 'info', duration = 3000) {
-  // Create notification element if it doesn't exist
-  let notification = document.querySelector('.notification');
-  if (!notification) {
-    notification = document.createElement('div');
-    notification.className = 'notification';
-    document.body.appendChild(notification);
+/**
+ * Show a notification
+ * @param {string} message - The notification message
+ * @param {string} type - The notification type (info, success, error, warning)
+ * @param {number} duration - Duration in milliseconds
+ */
+export function showNotification(message, type = 'info', duration = 3000) {
+  const container = document.querySelector('.notification-container');
+  
+  if (!container) {
+    console.error('Notification container not found');
+    return;
   }
   
-  // Set message and type
-  notification.textContent = message;
+  // Create notification element
+  const notification = document.createElement('div');
   notification.className = `notification ${type}`;
+  notification.textContent = message;
   
-  // Show notification
-  notification.classList.add('show');
+  // Add notification to container
+  container.appendChild(notification);
   
-  // Hide after duration
+  // Make the notification visible after a short delay (for animation)
   setTimeout(() => {
-    notification.classList.remove('show');
+    notification.classList.add('visible');
+  }, 10);
+  
+  // Remove the notification after the specified duration
+  setTimeout(() => {
+    notification.classList.remove('visible');
+    
+    // Remove the element after the transition
+    setTimeout(() => {
+      container.removeChild(notification);
+    }, 300);
   }, duration);
 }
 
-// Create a file list item
-function createFileListItem(file, onSelect, onDelete) {
-  const item = document.createElement('div');
-  item.className = 'file-item';
-  item.dataset.id = file.id;
+/**
+ * Create a file list item
+ * @param {object} file - The file data
+ * @returns {HTMLElement} The file list item element
+ */
+export function createFileListItem(file) {
+  const li = document.createElement('li');
+  li.className = 'file-item';
+  li.setAttribute('data-id', file.id);
   
-  // Create icon based on file type
   const icon = document.createElement('span');
   icon.className = 'file-icon';
+  icon.textContent = '📄';
   
-  if (file.type === 'markdown') {
-    icon.textContent = '📝';
-  } else if (file.type === 'image') {
-    icon.textContent = '🖼️';
-  } else {
-    icon.textContent = '📄';
-  }
-  
-  // Create file name
   const name = document.createElement('span');
   name.className = 'file-name';
   name.textContent = file.name;
   
-  // Create actions
   const actions = document.createElement('div');
   actions.className = 'file-actions';
   
-  const deleteBtn = document.createElement('button');
-  deleteBtn.className = 'file-action-btn';
-  deleteBtn.textContent = '🗑️';
-  deleteBtn.title = 'Delete';
-  deleteBtn.addEventListener('click', e => {
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn icon-btn';
+  editBtn.innerHTML = '✏️';
+  editBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    onDelete(file);
+    // Handle edit action
   });
   
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'btn icon-btn';
+  deleteBtn.innerHTML = '🗑️';
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Handle delete action
+  });
+  
+  actions.appendChild(editBtn);
   actions.appendChild(deleteBtn);
   
-  // Add elements to item
-  item.appendChild(icon);
-  item.appendChild(name);
-  item.appendChild(actions);
+  li.appendChild(icon);
+  li.appendChild(name);
+  li.appendChild(actions);
   
-  // Add click event
-  item.addEventListener('click', () => {
-    // Remove active class from all items
-    const items = document.querySelectorAll('.file-item');
-    items.forEach(i => i.classList.remove('active'));
-    
-    // Add active class to this item
-    item.classList.add('active');
-    
-    // Call select callback
-    onSelect(file);
-  });
-  
-  return item;
+  return li;
 }
 
-// Refresh the file list
-function refreshFileList(files, container, onSelect, onDelete) {
-  // Clear the container
-  container.innerHTML = '';
+/**
+ * Refresh the file list
+ * @param {array} files - The files to display
+ */
+export function refreshFileList(files) {
+  const fileList = document.getElementById('file-list');
   
-  // Add files to the container
-  Object.values(files).forEach(file => {
-    const item = createFileListItem(file, onSelect, onDelete);
-    container.appendChild(item);
+  // Clear the list
+  fileList.innerHTML = '';
+  
+  if (!files || files.length === 0) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-state';
+    
+    const message = document.createElement('p');
+    message.textContent = 'No files found';
+    
+    const createButton = document.createElement('button');
+    createButton.className = 'btn primary';
+    createButton.textContent = 'Create New File';
+    
+    emptyState.appendChild(message);
+    emptyState.appendChild(createButton);
+    
+    fileList.appendChild(emptyState);
+    return;
+  }
+  
+  // Add files to the list
+  files.forEach(file => {
+    const fileItem = createFileListItem(file);
+    fileList.appendChild(fileItem);
   });
 }
 
-// Export functions
-export {
+// Export UI module
+export default {
   initializeUI,
   toggleTheme,
   showNotification,
