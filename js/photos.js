@@ -1,12 +1,9 @@
 // Import dependencies
 import { showNotification } from './ui.js';
 import { 
-  saveDatabase, 
-  decryptData, 
-  encryptData, 
-  getEncryptionKey,
   saveToSecureStorage,
-  loadFromLocalStorage
+  loadFromSecureStorage,
+  getEncryptionKey
 } from './database.js';
 
 // Current state
@@ -22,17 +19,23 @@ export function initializePhotoManager(appState) {
   const photosContainer = document.getElementById('photos-container');
   const viewOptions = document.querySelectorAll('.view-option');
   
-  // Load data from secure storage if encryption key is available
-  const encryptionKey = getEncryptionKey();
-  if (encryptionKey) {
-    // Use loadFromLocalStorage as a transition helper
-    // This will eventually be replaced with a direct load from the secure database
-    const data = loadFromLocalStorage();
+  // Load data from secure storage
+  loadFromSecureStorage().then(data => {
     if (data) {
       db = data;
       console.log('Loaded data from secure storage for photos');
+      
+      // Initialize photos section if needed
+      if (!db.photos) {
+        db.photos = {};
+      }
+      
+      // Render gallery once data is loaded
+      renderPhotoGallery(db.photos);
     }
-  }
+  }).catch(error => {
+    console.error('Error loading data from secure storage:', error);
+  });
   
   // Initialize database structure if needed
   if (!db) {
@@ -43,9 +46,6 @@ export function initializePhotoManager(appState) {
   if (!db.photos) {
     db.photos = {};
   }
-  
-  // Render gallery
-  renderPhotoGallery(db.photos);
   
   // Upload button click
   if (uploadPhotoBtn) {
@@ -112,16 +112,19 @@ async function uploadPhotos(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to secure database only
+  // Save to secure storage
   try {
-    // Get encryption key
+    // Save to secure vault
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      // Save to secure storage
-      await saveToSecureStorage(db);
-      console.log('Saved photos to secure database');
+      const saveResult = await saveToSecureStorage(db);
+      if (saveResult) {
+        console.log('Saved photos to secure storage');
+      } else {
+        throw new Error('Failed to save to secure storage');
+      }
     } else {
-      throw new Error("Encryption key not available");
+      throw new Error('Encryption key not available');
     }
   } catch (error) {
     console.error('Failed to save photos:', error);
@@ -383,14 +386,20 @@ function deletePhoto(photo) {
     // Remove from database
     delete db.photos[photo.id];
     
-    // Save to secure database only
+    // Save to secure vault storage
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      // Save to secure storage
-      saveToSecureStorage(db);
-      console.log('Saved changes to secure database after photo deletion');
+      saveToSecureStorage(db)
+        .then(() => {
+          console.log('Saved changes to secure storage after photo deletion');
+        })
+        .catch(error => {
+          console.error('Failed to save to secure storage after deletion:', error);
+        });
     } else {
-      throw new Error("Encryption key not available");
+      console.error('Encryption key not available');
+      showNotification('Error: Encryption key not available', 'error');
+      return false;
     }
     
     // Update gallery

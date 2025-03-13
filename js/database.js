@@ -170,86 +170,7 @@ export function decryptData(encryptedData) {
 }
 
 /**
- * Load database from encrypted data
- * @param {string} encryptedData - The encrypted database data
- * @returns {boolean} True if database was loaded successfully
- */
-export async function loadDatabase(encryptedData) {
-  if (!db) initializeDatabase();
-  if (!encryptionKey) {
-    console.error("Encryption key not set");
-    return false;
-  }
-  
-  try {
-    const decrypted = decryptData(encryptedData);
-    if (!decrypted) return false;
-    
-    // Clear any existing data
-    await db.meta.clear();
-    await db.data.clear();
-    
-    // Load metadata
-    if (decrypted.meta) {
-      await db.meta.put(decrypted.meta);
-    }
-    
-    // Load data records
-    if (decrypted.data && Array.isArray(decrypted.data)) {
-      await db.data.bulkPut(decrypted.data);
-    }
-    
-    console.log("Database loaded successfully");
-    return true;
-  } catch (error) {
-    console.error("Error loading database:", error);
-    return false;
-  }
-}
-
-/**
- * Save database to encrypted data
- * @returns {string} The encrypted database data
- */
-export async function saveDatabase() {
-  if (!db) {
-    console.error("Database not initialized");
-    return null;
-  }
-  
-  if (!encryptionKey) {
-    console.error("Encryption key not set");
-    return null;
-  }
-  
-  try {
-    // Get metadata
-    const meta = await db.meta.get('metadata');
-    
-    // Get all data records
-    const data = await db.data.toArray();
-    
-    // Create the database object
-    const databaseObj = {
-      meta,
-      data
-    };
-    
-    // Encrypt the database
-    const encrypted = encryptData(databaseObj);
-    
-    // Update metadata
-    await db.meta.update('metadata', { updatedAt: new Date().toISOString() });
-    
-    return encrypted;
-  } catch (error) {
-    console.error("Error saving database:", error);
-    return null;
-  }
-}
-
-/**
- * Save database to secure storage
+ * Save data to secure vault storage
  * @param {object} data - The data to save
  * @returns {boolean} True if save was successful
  */
@@ -285,7 +206,7 @@ export async function saveToSecureStorage(data) {
     meta.updatedAt = new Date().toISOString();
     await db.meta.put(meta);
     
-    // Create a single record for all data
+    // Create a record for the vault data
     const dataRecord = {
       id: 'vault_data',
       type: 'encrypted',
@@ -306,7 +227,7 @@ export async function saveToSecureStorage(data) {
 }
 
 /**
- * Load data from secure storage
+ * Load data from secure vault storage
  * @returns {object} The decrypted data or null if error
  */
 export async function loadFromSecureStorage() {
@@ -325,10 +246,10 @@ export async function loadFromSecureStorage() {
     const dataRecord = await db.data.get('vault_data');
     
     if (!dataRecord || !dataRecord.data) {
-      console.error("No data found in secure storage");
+      console.log("No data found in secure storage, checking localStorage for migration");
       
-      // Temporary migration: try to load from localStorage instead
-      return loadFromLocalStorage();
+      // Try to migrate from localStorage (one-time operation)
+      return await migrateFromLocalStorage();
     }
     
     // Decrypt the data
@@ -339,6 +260,7 @@ export async function loadFromSecureStorage() {
       return null;
     }
     
+    console.log("Data loaded from secure storage");
     return decrypted;
   } catch (error) {
     console.error("Error loading from secure storage:", error);
@@ -347,32 +269,39 @@ export async function loadFromSecureStorage() {
 }
 
 /**
- * Load database from localStorage (temporary migration helper)
- * @returns {object} The data from localStorage or null if error
+ * Migrate data from localStorage to secure storage (one-time operation)
+ * @returns {object} The migrated data or null if error/no data
  */
-export function loadFromLocalStorage() {
+export async function migrateFromLocalStorage() {
   try {
-    // Get data from localStorage
+    // Check if localStorage has any data
     const data = localStorage.getItem('markdown_vault_data');
     
     if (!data) {
-      console.error("No data found in localStorage");
+      console.log("No data found in localStorage for migration");
       return null;
     }
     
     // Parse the data
     const parsedData = JSON.parse(data);
     
-    // Save to secure storage for future use
-    if (dbInitialized && encryptionKey) {
-      saveToSecureStorage(parsedData)
-        .then(() => console.log("Data migrated from localStorage to secure storage"))
-        .catch(error => console.error("Error migrating data:", error));
-    }
+    // Save to secure storage
+    const saveResult = await saveToSecureStorage(parsedData);
     
-    return parsedData;
+    if (saveResult) {
+      console.log("Successfully migrated data from localStorage to secure storage");
+      
+      // Clear localStorage after successful migration
+      localStorage.removeItem('markdown_vault_data');
+      console.log("Cleared localStorage after migration");
+      
+      return parsedData;
+    } else {
+      console.error("Failed to save migrated data to secure storage");
+      return null;
+    }
   } catch (error) {
-    console.error("Error loading from localStorage:", error);
+    console.error("Error during migration from localStorage:", error);
     return null;
   }
 }
@@ -423,54 +352,77 @@ export async function exportDatabase() {
 
 /**
  * Import database from a file
- * @param {File} file - The file to import
- * @returns {Promise<boolean>} True if import was successful
+ * @param {File} file - The file to import from
+ * @returns {Promise<Object>} The imported data
  */
-export async function importDatabase(file) {
-  try {
+export function importDatabase(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error('No file provided for import'));
+      return;
+    }
+    
+    console.log('Importing database from file:', file.name);
+    
+    // Check if the encryption key is set
+    const encryptionKey = getEncryptionKey();
+    if (!encryptionKey) {
+      reject(new Error('Cannot import database: You must be logged in with an encryption key set'));
+      return;
+    }
+    
     // Read the file
     const reader = new FileReader();
     
-    return new Promise((resolve, reject) => {
-      reader.onload = async (event) => {
-        try {
-          const jsonData = event.target.result;
-          const importObj = JSON.parse(jsonData);
-          
-          // Validate the import object
-          if (importObj.type !== 'markdown-vault-export' || !importObj.data) {
-            console.error("Invalid import file format");
-            resolve(false);
-            return;
-          }
-          
-          // Save to secure storage
-          const saveResult = await saveToSecureStorage(importObj.data);
-          
-          if (saveResult) {
-            console.log("Database imported successfully to secure storage");
-            resolve(true);
-          } else {
-            console.error("Failed to save imported data to secure storage");
-            resolve(false);
-          }
-        } catch (error) {
-          console.error("Error parsing import file:", error);
-          resolve(false);
+    reader.onload = async (event) => {
+      try {
+        // Parse the file content
+        const importData = JSON.parse(event.target.result);
+        
+        // Validate import structure
+        if (!importData || typeof importData !== 'object') {
+          reject(new Error('Invalid import file: File does not contain valid JSON data'));
+          return;
         }
-      };
-      
-      reader.onerror = () => {
-        console.error("Error reading import file");
-        resolve(false);
-      };
-      
-      reader.readAsText(file);
-    });
-  } catch (error) {
-    console.error("Error importing database:", error);
-    return false;
-  }
+        
+        // Verify it's a compatible export format
+        if (!importData.metadata || !importData.metadata.exportDate) {
+          reject(new Error('Invalid import file: File does not contain valid export metadata'));
+          return;
+        }
+        
+        // Import data into secure storage
+        const data = importData.data || {};
+        
+        // Save to our secure storage using the current encryption key
+        try {
+          // Loop through each data section and save it
+          const savePromises = Object.keys(data).map(key => {
+            return saveToSecureStorage(key, data[key]);
+          });
+          
+          await Promise.all(savePromises);
+          
+          // Success
+          console.log('Database import successful');
+          resolve(data);
+          
+          // Optionally reload the app to apply imported data
+          window.dispatchEvent(new CustomEvent('database-imported', { detail: data }));
+        } catch (saveError) {
+          reject(new Error(`Failed to save imported data: ${saveError.message}`));
+        }
+      } catch (parseError) {
+        reject(new Error(`Failed to parse import file: ${parseError.message}`));
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(new Error('Error reading import file'));
+    };
+    
+    reader.readAsText(file);
+  });
 }
 
 /**
@@ -495,18 +447,75 @@ export async function changeEncryptionKey(newKey) {
   }
   
   try {
-    // Save the database with the current key
-    const encryptedData = await saveDatabase();
-    if (!encryptedData) return false;
+    // Load current data
+    const data = await loadFromSecureStorage();
+    if (!data) return false;
     
     // Set the new key
     encryptionKey = newKey;
     
-    // Load the database with the new key
-    const success = await loadDatabase(encryptedData);
+    // Save with the new key
+    const success = await saveToSecureStorage(data);
     return success;
   } catch (error) {
     console.error("Error changing encryption key:", error);
+    return false;
+  }
+}
+
+/**
+ * Save database to encrypted data (legacy compatibility)
+ * @returns {string} The encrypted database data
+ */
+export async function saveDatabase() {
+  // Load the current data
+  const data = await loadFromSecureStorage();
+  
+  // Save it using the new secure storage
+  if (data) {
+    await saveToSecureStorage(data);
+  }
+  
+  // For compatibility, still return encrypted data
+  if (!db) {
+    console.error("Database not initialized");
+    return null;
+  }
+  
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return null;
+  }
+  
+  try {
+    const dataRecord = await db.data.get('vault_data');
+    return dataRecord?.data || null;
+  } catch (error) {
+    console.error("Error in legacy saveDatabase:", error);
+    return null;
+  }
+}
+
+/**
+ * Load database from encrypted data (legacy compatibility)
+ * @param {string} encryptedData - The encrypted database data
+ * @returns {boolean} True if database was loaded successfully
+ */
+export async function loadDatabase(encryptedData) {
+  if (!db) initializeDatabase();
+  if (!encryptionKey) {
+    console.error("Encryption key not set");
+    return false;
+  }
+  
+  try {
+    const decrypted = decryptData(encryptedData);
+    if (!decrypted) return false;
+    
+    // Use the new storage method
+    return await saveToSecureStorage(decrypted);
+  } catch (error) {
+    console.error("Error in legacy loadDatabase:", error);
     return false;
   }
 }
@@ -527,6 +536,7 @@ export default {
   exportDatabase,
   importDatabase,
   changeEncryptionKey,
-  loadFromLocalStorage,
-  saveToSecureStorage
+  saveToSecureStorage,
+  loadFromSecureStorage,
+  migrateFromLocalStorage
 }; 

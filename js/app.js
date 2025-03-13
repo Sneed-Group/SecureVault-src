@@ -1,5 +1,5 @@
 // Import necessary modules
-import { initializeDatabase, closeDatabase, setEncryptionKey, loadFromSecureStorage } from './database.js';
+import { initializeDatabase, closeDatabase, setEncryptionKey, loadFromSecureStorage, migrateFromLocalStorage } from './database.js';
 import { initializeUI, toggleTheme } from './ui.js';
 import { initializeAuth, checkAuthentication, AUTH_EVENTS } from './auth.js';
 import editorModule from './editor.js';
@@ -27,7 +27,7 @@ const appState = {
 export function initializeApp() {
   console.log('Initializing app...');
   
-  // Load preferences first
+  // Load preferences first (from localStorage for now, these are too small to encrypt)
   loadPreferences();
   
   // Initialize authentication first
@@ -44,17 +44,31 @@ export function initializeApp() {
     initializeDatabase();
     setEncryptionKey(sessionKey);
     
-    // Load data from secure storage
-    loadFromSecureStorage()
+    // Attempt to migrate data from localStorage if needed (one-time operation)
+    migrateFromLocalStorage()
       .then(data => {
-        console.log('Data loaded from secure storage');
+        if (data) {
+          console.log('Successfully migrated data from localStorage to secure storage');
+        }
+        
+        // Load data from secure storage
+        return loadFromSecureStorage();
+      })
+      .then(data => {
+        if (data) {
+          console.log('Successfully loaded data from secure storage');
+        } else {
+          console.log('No data found in secure storage');
+        }
+        
+        // Initialize the rest of the application
+        initializeAppComponents();
       })
       .catch(error => {
-        console.error('Failed to load data from secure storage:', error);
+        console.error('Error during initialization:', error);
+        // Continue initializing components even if there's an error
+        initializeAppComponents();
       });
-    
-    // Initialize the rest of the application
-    initializeAppComponents();
   }
   
   // Listen for authentication events
@@ -68,8 +82,21 @@ export function initializeApp() {
     initializeDatabase();
     setEncryptionKey(sessionKey);
     
-    // Initialize components
-    initializeAppComponents();
+    // Load data and initialize components
+    loadFromSecureStorage()
+      .then(data => {
+        if (data) {
+          console.log('Successfully loaded data from secure storage after login');
+        }
+        
+        // Initialize components
+        initializeAppComponents();
+      })
+      .catch(error => {
+        console.error('Error loading data after login:', error);
+        // Continue initializing components even if there's an error
+        initializeAppComponents();
+      });
   });
   
   window.addEventListener(AUTH_EVENTS.LOGOUT, () => {

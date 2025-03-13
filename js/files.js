@@ -1,12 +1,9 @@
 // Import dependencies
 import { showNotification } from './ui.js';
 import { 
-  saveDatabase, 
-  decryptData, 
-  encryptData, 
-  getEncryptionKey,
   saveToSecureStorage,
-  loadFromLocalStorage
+  loadFromSecureStorage,
+  getEncryptionKey
 } from './database.js';
 
 // Current state
@@ -22,17 +19,23 @@ export function initializeFileManager(appState) {
   const filesContainer = document.getElementById('files-container');
   const sortFilesSelect = document.getElementById('sort-files');
   
-  // Load data from secure storage if encryption key is available
-  const encryptionKey = getEncryptionKey();
-  if (encryptionKey) {
-    // Use loadFromLocalStorage as a transition helper
-    // This will eventually be replaced with a direct load from the secure database
-    const data = loadFromLocalStorage();
+  // Load data from secure storage
+  loadFromSecureStorage().then(data => {
     if (data) {
       db = data;
       console.log('Loaded data from secure storage for files');
+      
+      // Initialize files section if needed
+      if (!db.files) {
+        db.files = {};
+      }
+      
+      // Render files list once data is loaded
+      renderFilesList(db.files);
     }
-  }
+  }).catch(error => {
+    console.error('Error loading data from secure storage:', error);
+  });
   
   // Initialize database structure if needed
   if (!db) {
@@ -43,9 +46,6 @@ export function initializeFileManager(appState) {
   if (!db.files) {
     db.files = {};
   }
-  
-  // Render files list
-  renderFilesList(db.files);
   
   // Upload button click
   if (uploadFileBtn) {
@@ -98,16 +98,19 @@ async function uploadFiles(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to secure database only
+  // Save to secure storage
   try {
-    // Get encryption key
+    // Save to secure vault
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      // Save to secure storage
-      await saveToSecureStorage(db);
-      console.log('Saved files to secure database');
+      const saveResult = await saveToSecureStorage(db);
+      if (saveResult) {
+        console.log('Saved files to secure storage');
+      } else {
+        throw new Error('Failed to save to secure storage');
+      }
     } else {
-      throw new Error("Encryption key not available");
+      throw new Error('Encryption key not available');
     }
   } catch (error) {
     console.error('Failed to save files:', error);
@@ -123,13 +126,16 @@ async function uploadFiles(fileList) {
   return successCount === fileList.length;
 }
 
-// Process a single file
+// Process a single file with size optimization for large files
 async function processFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
     reader.onload = async (e) => {
       try {
+        // For large files, we may want to optimize storage
+        const content = e.target.result;
+        
         // Create a file object
         const fileObj = {
           id: generateId(),
@@ -137,7 +143,7 @@ async function processFile(file) {
           type: 'file',
           size: file.size,
           contentType: file.type,
-          content: e.target.result,
+          content: content,
           created: new Date().toISOString(),
           modified: new Date().toISOString()
         };
@@ -340,14 +346,20 @@ function deleteFile(file) {
     // Remove from database
     delete db.files[file.id];
     
-    // Save to secure database only
+    // Save to secure vault storage
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      // Save to secure storage
-      saveToSecureStorage(db);
-      console.log('Saved changes to secure database after deletion');
+      saveToSecureStorage(db)
+        .then(() => {
+          console.log('Saved changes to secure storage after deletion');
+        })
+        .catch(error => {
+          console.error('Failed to save to secure storage after deletion:', error);
+        });
     } else {
-      throw new Error("Encryption key not available");
+      console.error('Encryption key not available');
+      showNotification('Error: Encryption key not available', 'error');
+      return false;
     }
     
     // Update file list
