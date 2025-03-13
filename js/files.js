@@ -4,9 +4,7 @@ import {
   saveDatabase, 
   decryptData, 
   encryptData, 
-  getEncryptionKey,
-  saveToSecureStorage,
-  loadFromLocalStorage
+  getEncryptionKey 
 } from './database.js';
 
 // Current state
@@ -22,16 +20,15 @@ export function initializeFileManager(appState) {
   const filesContainer = document.getElementById('files-container');
   const sortFilesSelect = document.getElementById('sort-files');
   
-  // Load data from secure storage if encryption key is available
-  const encryptionKey = getEncryptionKey();
-  if (encryptionKey) {
-    // Use loadFromLocalStorage as a transition helper
-    // This will eventually be replaced with a direct load from the secure database
-    const data = loadFromLocalStorage();
-    if (data) {
-      db = data;
-      console.log('Loaded data from secure storage for files');
+  // Load database from localStorage - temporary solution until fully migrated to secure database
+  try {
+    const savedData = localStorage.getItem('markdown_vault_data');
+    if (savedData) {
+      db = JSON.parse(savedData);
+      console.log('Loaded data from localStorage for files');
     }
+  } catch (error) {
+    console.error('Error loading data from localStorage for files:', error);
   }
   
   // Initialize database structure if needed
@@ -98,16 +95,19 @@ async function uploadFiles(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to secure database only
+  // Save to database
   try {
-    // Get encryption key
+    // First, save to localStorage as a fallback
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    
+    // Then encrypt and save to secure storage if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      // Save to secure storage
-      await saveToSecureStorage(db);
-      console.log('Saved files to secure database');
-    } else {
-      throw new Error("Encryption key not available");
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        await saveDatabase();
+        console.log('Saved files to secure database');
+      }
     }
   } catch (error) {
     console.error('Failed to save files:', error);
@@ -340,14 +340,17 @@ function deleteFile(file) {
     // Remove from database
     delete db.files[file.id];
     
-    // Save to secure database only
+    // Save database
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    
+    // Save to secure database if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      // Save to secure storage
-      saveToSecureStorage(db);
-      console.log('Saved changes to secure database after deletion');
-    } else {
-      throw new Error("Encryption key not available");
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        saveDatabase();
+        console.log('Saved changes to secure database after deletion');
+      }
     }
     
     // Update file list

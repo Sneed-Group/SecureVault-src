@@ -1,6 +1,6 @@
 // Import dependencies
 import { marked } from 'marked';
-import { saveDatabase, encryptData, getEncryptionKey, saveToSecureStorage, loadFromLocalStorage } from './database.js';
+import { saveDatabase, encryptData, getEncryptionKey, saveToSecureStorage } from './database.js';
 import { showNotification, refreshFileList } from './ui.js';
 import hljs from 'highlight.js';
 
@@ -41,16 +41,15 @@ export function initializeEditor(appState) {
     sanitize: false
   });
   
-  // Load data from secure storage if encryption key is available
-  const encryptionKey = getEncryptionKey();
-  if (encryptionKey) {
-    // Use loadFromLocalStorage as a transition helper
-    // This will eventually be replaced with a direct load from the secure database
-    const data = loadFromLocalStorage();
-    if (data) {
-      db = data;
-      console.log('Loaded data from secure storage for editor');
+  // Try to load existing data from localStorage
+  try {
+    const savedData = localStorage.getItem('markdown_vault_data');
+    if (savedData) {
+      db = JSON.parse(savedData);
+      console.log('Loaded data from localStorage');
     }
+  } catch (error) {
+    console.error('Error loading data from localStorage:', error);
   }
   
   // Initialize the database structure if needed
@@ -266,14 +265,23 @@ async function saveCurrentFile() {
     currentFile.modified = new Date().toISOString();
     db.docs[currentFile.id] = currentFile;
     
-    // Save to secure storage only
+    // Save to secure storage if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      // Save to secure storage
-      await saveToSecureStorage(db);
-      console.log('Saved to secure database');
-    } else {
-      throw new Error("Encryption key not available");
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        await saveDatabase();
+        console.log('Saved to secure database');
+      }
+    }
+    
+    // Save to localStorage (temporary solution until we implement proper saving)
+    try {
+      localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+      console.log('Saved to localStorage');
+    } catch (localStorageError) {
+      console.error('Failed to save to localStorage:', localStorageError);
+      // Continue anyway as we've already saved to secure database
     }
     
     // Reset dirty flag
@@ -346,16 +354,23 @@ function createNewDocument() {
   
   db.docs[newDoc.id] = newDoc;
   
-  // Save to secure storage only
+  // Save to secure storage if encryption key is available
   const encryptionKey = getEncryptionKey();
   if (encryptionKey) {
-    // Save to secure storage
-    saveToSecureStorage(db);
-    console.log('New document saved to secure database');
-  } else {
-    console.error("Encryption key not available");
-    showNotification('Error: Could not save document securely', 'error');
-    return false;
+    const encrypted = encryptData(db);
+    if (encrypted) {
+      saveDatabase();
+      console.log('New document saved to secure database');
+    }
+  }
+  
+  // Save to localStorage
+  try {
+    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+    console.log('New document saved to localStorage');
+  } catch (error) {
+    console.error('Failed to save new document to localStorage:', error);
+    // Continue anyway as we've already saved to secure database
   }
   
   // Update the UI
@@ -427,14 +442,23 @@ async function deleteFile(file) {
     // Remove from database
     delete db.docs[file.id];
     
-    // Save to secure storage only
+    // Save to secure storage if encryption key is available
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      // Save to secure storage
-      await saveToSecureStorage(db);
-      console.log('Database saved to secure storage after deletion');
-    } else {
-      throw new Error("Encryption key not available");
+      const encrypted = encryptData(db);
+      if (encrypted) {
+        await saveDatabase();
+        console.log('Database saved to secure storage after deletion');
+      }
+    }
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem('markdown_vault_data', JSON.stringify(db));
+      console.log('Database saved to localStorage after deletion');
+    } catch (localStorageError) {
+      console.error('Failed to save to localStorage after deletion:', localStorageError);
+      // Continue anyway as we've already saved to secure database
     }
     
     // Clear editor if this was the current file

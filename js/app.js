@@ -1,5 +1,5 @@
 // Import necessary modules
-import { initializeDatabase, closeDatabase, setEncryptionKey, loadFromSecureStorage } from './database.js';
+import { initializeDatabase, closeDatabase, setEncryptionKey } from './database.js';
 import { initializeUI, toggleTheme } from './ui.js';
 import { initializeAuth, checkAuthentication, AUTH_EVENTS } from './auth.js';
 import editorModule from './editor.js';
@@ -44,15 +44,6 @@ export function initializeApp() {
     initializeDatabase();
     setEncryptionKey(sessionKey);
     
-    // Load data from secure storage
-    loadFromSecureStorage()
-      .then(data => {
-        console.log('Data loaded from secure storage');
-      })
-      .catch(error => {
-        console.error('Failed to load data from secure storage:', error);
-      });
-    
     // Initialize the rest of the application
     initializeAppComponents();
   }
@@ -60,15 +51,6 @@ export function initializeApp() {
   // Listen for authentication events
   window.addEventListener(AUTH_EVENTS.LOGIN, () => {
     console.log('Login event detected, initializing app components...');
-    
-    // Get the session key
-    const sessionKey = sessionStorage.getItem('sessionKey');
-    
-    // Initialize database with the key
-    initializeDatabase();
-    setEncryptionKey(sessionKey);
-    
-    // Initialize components
     initializeAppComponents();
   });
   
