@@ -61,8 +61,8 @@ export function validatePassword(password, authData) {
 
 /**
  * Encrypt data using the encryption key
- * @param {object} data - The data to encrypt
- * @returns {string} The encrypted data
+ * @param {Object} data - The data to encrypt
+ * @returns {string|null} The encrypted data string, or null if encryption failed
  */
 export function encryptData(data) {
   if (!encryptionKey) {
@@ -71,19 +71,25 @@ export function encryptData(data) {
   }
   
   try {
+    console.log("Starting encryption process...");
     const jsonData = JSON.stringify(data);
-    const encrypted = CryptoJS.AES.encrypt(jsonData, encryptionKey).toString();
-    return encrypted;
+    console.log(`Data stringified, length: ${jsonData.length} characters`);
+    
+    const encrypted = CryptoJS.AES.encrypt(jsonData, encryptionKey);
+    const encryptedString = encrypted.toString();
+    console.log(`Data encrypted, result length: ${encryptedString.length} characters`);
+    
+    return encryptedString;
   } catch (error) {
-    console.error("Error encrypting data:", error);
+    console.error("Error during encryption process:", error);
     return null;
   }
 }
 
 /**
  * Decrypt data using the encryption key
- * @param {string} encryptedData - The encrypted data to decrypt
- * @returns {object} The decrypted data
+ * @param {string} encryptedData - The encrypted data string
+ * @returns {Object|null} The decrypted data object, or null if decryption failed
  */
 export function decryptData(encryptedData) {
   if (!encryptionKey) {
@@ -92,19 +98,43 @@ export function decryptData(encryptedData) {
   }
   
   try {
+    console.log("Attempting to decrypt data...");
     const decrypted = CryptoJS.AES.decrypt(encryptedData, encryptionKey);
+    
+    // Check if decryption result is empty
+    if (!decrypted || decrypted.sigBytes <= 0) {
+      console.error("Decryption result is empty, likely incorrect key");
+      return null;
+    }
+    
     const jsonData = decrypted.toString(CryptoJS.enc.Utf8);
-    return JSON.parse(jsonData);
+    
+    // Check if resulting string is empty
+    if (!jsonData || jsonData.length === 0) {
+      console.error("Decryption produced empty string, likely incorrect key");
+      return null;
+    }
+    
+    // Try to parse the JSON
+    try {
+      const parsedData = JSON.parse(jsonData);
+      return parsedData;
+    } catch (parseError) {
+      console.error("Error parsing decrypted JSON:", parseError);
+      console.error("Decryption may have succeeded but produced invalid JSON (first 100 chars):", 
+        jsonData.substring(0, 100));
+      return null;
+    }
   } catch (error) {
-    console.error("Error decrypting data:", error);
+    console.error("Error during decryption process:", error);
     return null;
   }
 }
 
 /**
- * Save data to secure storage as a file
- * @param {object} data - The data to save
- * @param {boolean} downloadFile - Whether to download the vault file
+ * Save data to secure storage
+ * @param {Object} data - The data to save
+ * @param {boolean} downloadFile - Whether to download the file
  * @returns {Promise<boolean>} True if save was successful
  */
 export async function saveToSecureStorage(data, downloadFile = false) {
@@ -153,7 +183,8 @@ export async function saveToSecureStorage(data, downloadFile = false) {
     // Add metadata
     mergedData.meta = {
       version: 1,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      encryptionMethod: "pbkdf2" // Add encryption method info
     };
     
     // Log data sizes for debugging
@@ -175,7 +206,11 @@ export async function saveToSecureStorage(data, downloadFile = false) {
       type: 'secure-vault',
       version: 1,
       timestamp: new Date().toISOString(),
-      data: encryptedData
+      data: encryptedData,
+      encryptionInfo: {
+        method: "pbkdf2",
+        saltUsed: true
+      }
     };
     
     // Convert to JSON
@@ -337,9 +372,9 @@ export function readVaultFile(file) {
 }
 
 /**
- * Import database from a file with password
- * @param {File} file - The file to import
- * @param {string} password - The password for the file
+ * Import database with password
+ * @param {File} file The imported file
+ * @param {string} password The password to decrypt the file
  * @returns {Promise<boolean>} True if import was successful
  */
 export async function importDatabaseWithPassword(file, password) {
@@ -378,29 +413,102 @@ export async function importDatabaseWithPassword(file, password) {
       throw new Error("Invalid vault file format - missing required fields");
     }
     
-    // Derive key from password
-    const key = deriveKeyFromPassword(password);
-    if (!key) {
-      console.error("Failed to derive key from provided password");
-      throw new Error("Failed to derive key from password");
+    console.log("Attempting to decrypt the vault...");
+    
+    // Check for encryption info in the vault file
+    let encryptionMethod = "pbkdf2"; // Default method
+    let saltUsed = true;
+    
+    if (vaultFileObj.encryptionInfo) {
+      encryptionMethod = vaultFileObj.encryptionInfo.method || encryptionMethod;
+      saltUsed = vaultFileObj.encryptionInfo.saltUsed !== false; // Default to true
+      console.log(`Vault file specifies encryption method: ${encryptionMethod}, salt used: ${saltUsed}`);
+    } else {
+      console.log("No encryption info in vault file, trying default methods");
     }
     
-    // Set the encryption key
-    setEncryptionKey(key);
-    console.log("Encryption key set successfully");
+    // Try multiple approaches to decrypt
+    let decryptedData = null;
+    let decryptionSuccessful = false;
+    let usedKey = null;
     
-    // Set the vault file
+    // Attempt 1: Try with default salt
+    console.log("Attempt 1: Trying to decrypt with default salt");
+    const key1 = deriveKeyFromPassword(password);
+    if (key1) {
+      setEncryptionKey(key1);
+      try {
+        decryptedData = decryptData(vaultFileObj.data);
+        if (decryptedData && typeof decryptedData === 'object') {
+          console.log("Decryption successful using default salt");
+          decryptionSuccessful = true;
+          usedKey = key1;
+        }
+      } catch (e) {
+        console.log("Decryption failed with default salt:", e);
+      }
+    }
+    
+    // Attempt 2: Try with no salt
+    if (!decryptionSuccessful) {
+      console.log("Attempt 2: Trying to decrypt with no salt");
+      const key2 = deriveKeyFromPassword(password, '');
+      if (key2) {
+        setEncryptionKey(key2);
+        try {
+          decryptedData = decryptData(vaultFileObj.data);
+          if (decryptedData && typeof decryptedData === 'object') {
+            console.log("Decryption successful using no salt");
+            decryptionSuccessful = true;
+            usedKey = key2;
+          }
+        } catch (e) {
+          console.log("Decryption failed with no salt:", e);
+        }
+      }
+    }
+    
+    // Attempt 3: Try with password directly
+    if (!decryptionSuccessful) {
+      console.log("Attempt 3: Trying to decrypt with password directly");
+      setEncryptionKey(password);
+      try {
+        decryptedData = decryptData(vaultFileObj.data);
+        if (decryptedData && typeof decryptedData === 'object') {
+          console.log("Decryption successful using password directly");
+          decryptionSuccessful = true;
+          usedKey = password;
+        }
+      } catch (e) {
+        console.log("Decryption failed with direct password:", e);
+      }
+    }
+    
+    // Attempt 4: Try with SHA-256 of password
+    if (!decryptionSuccessful) {
+      console.log("Attempt 4: Trying to decrypt with SHA-256 of password");
+      const key4 = CryptoJS.SHA256(password).toString();
+      setEncryptionKey(key4);
+      try {
+        decryptedData = decryptData(vaultFileObj.data);
+        if (decryptedData && typeof decryptedData === 'object') {
+          console.log("Decryption successful using SHA-256 of password");
+          decryptionSuccessful = true;
+          usedKey = key4;
+        }
+      } catch (e) {
+        console.log("Decryption failed with SHA-256 of password:", e);
+      }
+    }
+    
+    if (!decryptionSuccessful) {
+      console.error("All decryption attempts failed - invalid password or corrupt file");
+      throw new Error("Invalid password or corrupt file");
+    }
+    
+    // Set the vault file only after successful decryption
     setVaultFile(file);
     console.log("Vault file set successfully");
-    
-    // Try to decrypt
-    const decryptedData = decryptData(vaultFileObj.data);
-    if (!decryptedData) {
-      console.error("Failed to decrypt vault data with provided password");
-      throw new Error("Failed to decrypt vault data - incorrect password");
-    }
-    
-    console.log("Vault data decrypted successfully");
     
     // Check and initialize data structure if needed
     if (!decryptedData.docs) decryptedData.docs = {};
@@ -418,6 +526,12 @@ export async function importDatabaseWithPassword(file, password) {
     
     // Store the decrypted data
     vaultData = decryptedData;
+    
+    // Store the working key in session storage
+    if (usedKey) {
+      sessionStorage.setItem('sessionKey', usedKey);
+      console.log("Saved working key to session storage");
+    }
     
     console.log("Vault file imported successfully");
     return true;
@@ -439,12 +553,15 @@ export async function exportDatabase() {
       return false;
     }
     
+    console.log("Starting vault export process...");
+    console.log("Current encryption key type:", typeof encryptionKey);
+    
     // We need to make sure we're exporting the most up-to-date data
     // First, trigger an autosave to ensure all modules save their data
     window.dispatchEvent(new CustomEvent('vault:autosave'));
     
     // Wait a moment for the autosave to complete
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 800));
     
     // Ensure vaultData is populated with all the latest data
     const mergedData = {};
@@ -459,13 +576,43 @@ export async function exportDatabase() {
     if (!mergedData.files) mergedData.files = {};  
     if (!mergedData.photos) mergedData.photos = {};
     
+    // Ensure we store the auth data as well, which is important for imports
+    if (!mergedData.auth) {
+      // Try to get from localStorage
+      const authDataStr = localStorage.getItem('auth');
+      if (authDataStr) {
+        try {
+          mergedData.auth = JSON.parse(authDataStr);
+          console.log("Included auth data from localStorage in export");
+        } catch (e) {
+          console.warn("Could not parse auth data from localStorage");
+        }
+      }
+    }
+    
     console.log("Preparing to export vault with data:", 
       `${Object.keys(mergedData.docs).length} documents, ` +
       `${Object.keys(mergedData.files).length} files, ` + 
       `${Object.keys(mergedData.photos).length} photos`);
     
+    // Store current encryptionKey to restore later
+    const originalKey = encryptionKey;
+    
+    // Set the current encryption key for the export
+    // This ensures the export and import process use the same key derivation
+    let currentSessionKey = sessionStorage.getItem('sessionKey');
+    if (currentSessionKey) {
+      console.log("Using session key for export");
+      setEncryptionKey(currentSessionKey);
+    }
+    
     // Use saveToSecureStorage with the merged data and download flag set to true
-    return await saveToSecureStorage(mergedData, true);
+    const result = await saveToSecureStorage(mergedData, true);
+    
+    // Restore original key
+    setEncryptionKey(originalKey);
+    
+    return result;
   } catch (error) {
     console.error("Error exporting database:", error);
     return false;

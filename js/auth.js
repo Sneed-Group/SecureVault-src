@@ -568,7 +568,29 @@ export function initializeAuth() {
           // Dispatch login event to trigger app initialization
           window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
         } else {
-          showAuthMessage('Error importing vault. Invalid password or corrupted file.', 'error');
+          // Keep the modal open but show error
+          showAuthMessage('Error importing vault. Invalid password or corrupted file. Please try again.', 'error');
+          
+          // Reset password field to allow another attempt
+          const passwordInput = document.getElementById('import-password');
+          if (passwordInput) {
+            passwordInput.value = '';
+            passwordInput.focus();
+          }
+          
+          // Add a hint about the password
+          const passHint = document.createElement('p');
+          passHint.innerHTML = 'Hint: Make sure you\'re using the same password that was used to export the vault.';
+          passHint.className = 'import-password-hint';
+          passHint.style.color = 'var(--warning-color)';
+          passHint.style.fontSize = 'small';
+          passHint.style.marginTop = '8px';
+
+          // Add it after the password input if it doesn't already exist
+          const formGroup = passwordInput.parentNode;
+          if (formGroup && !formGroup.querySelector('.import-password-hint')) {
+            formGroup.appendChild(passHint);
+          }
         }
       } catch (error) {
         console.error('Import error:', error);
@@ -768,6 +790,162 @@ export function logout() {
   setVaultFile(null);
   
   console.log('Logout successful');
+}
+
+/**
+ * Set up the import dialog functionality
+ */
+function setupImportDialog() {
+  const importDialog = document.getElementById('import-dialog');
+  const importConfirmBtn = document.getElementById('import-confirm');
+  const importCancelBtn = document.getElementById('import-cancel');
+  const importPassword = document.getElementById('import-password');
+  const importMessage = document.getElementById('import-message');
+  const importFileInfo = document.getElementById('import-file-info');
+  
+  if (!importDialog || !importConfirmBtn || !importCancelBtn || !importPassword || !importMessage) {
+    console.error("Import dialog elements not found");
+    return;
+  }
+  
+  // Add a hint element if it doesn't exist
+  if (!document.getElementById('import-password-hint')) {
+    const hintElement = document.createElement('div');
+    hintElement.id = 'import-password-hint';
+    hintElement.className = 'password-hint';
+    hintElement.style.fontSize = '0.85em';
+    hintElement.style.marginTop = '5px';
+    hintElement.style.color = 'var(--text-secondary)';
+    hintElement.style.display = 'none';
+    hintElement.textContent = 'Make sure this is the password you used when exporting the vault.';
+    importPassword.parentNode.appendChild(hintElement);
+  }
+  
+  // Store selected import file
+  let selectedImportFile = null;
+  
+  // Import button click handler
+  importConfirmBtn.addEventListener('click', async () => {
+    console.log("Import confirm button clicked");
+    
+    // Get the selected file
+    const fileInput = document.getElementById('db-import');
+    selectedImportFile = fileInput.files[0];
+    
+    // Validate we have a file and password
+    if (!selectedImportFile) {
+      importMessage.textContent = "Please select a vault file first";
+      importMessage.className = "error-message";
+      return;
+    }
+    
+    const password = importPassword.value;
+    if (!password) {
+      importMessage.textContent = "Please enter your password";
+      importMessage.className = "error-message";
+      // Show the password hint
+      const hintElement = document.getElementById('import-password-hint');
+      if (hintElement) hintElement.style.display = 'block';
+      return;
+    }
+    
+    // Provide visual feedback that processing is happening
+    importMessage.textContent = "Processing import...";
+    importMessage.className = "";
+    importConfirmBtn.disabled = true;
+    
+    // Check file extension
+    const fileExt = selectedImportFile.name.split('.').pop().toLowerCase();
+    if (fileExt !== 'vault' && fileExt !== 'json') {
+      importMessage.textContent = `Invalid file type: .${fileExt}. Please select a .vault or .json file.`;
+      importMessage.className = "error-message";
+      importConfirmBtn.disabled = false;
+      return;
+    }
+    
+    // Attempt to import
+    console.log(`Attempting to import file: ${selectedImportFile.name}`);
+    const importResult = await importDatabaseWithPassword(selectedImportFile, password);
+    
+    if (importResult) {
+      console.log("Import successful");
+      importMessage.textContent = "Import successful! Reloading the app...";
+      importMessage.className = "success-message";
+      
+      // Close dialog and reload app after a delay
+      setTimeout(() => {
+        importDialog.close();
+        window.location.reload();
+      }, 1500);
+    } else {
+      console.log("Import failed");
+      importMessage.textContent = "Invalid password or corrupt file. Please try again.";
+      importMessage.className = "error-message";
+      
+      // Reset password field for another attempt
+      importPassword.value = "";
+      importPassword.focus();
+      
+      // Show the password hint
+      const hintElement = document.getElementById('import-password-hint');
+      if (hintElement) hintElement.style.display = 'block';
+      
+      // Re-enable confirm button
+      importConfirmBtn.disabled = false;
+    }
+  });
+  
+  // Cancel button click handler
+  importCancelBtn.addEventListener('click', () => {
+    importDialog.close();
+    // Reset form
+    importPassword.value = "";
+    importMessage.textContent = "";
+    importMessage.className = "";
+    selectedImportFile = null;
+    const hintElement = document.getElementById('import-password-hint');
+    if (hintElement) hintElement.style.display = 'none';
+  });
+  
+  // File input change handler to update the file info
+  const fileInput = document.getElementById('db-import');
+  if (fileInput) {
+    fileInput.addEventListener('change', (event) => {
+      selectedImportFile = event.target.files[0];
+      if (selectedImportFile) {
+        if (importFileInfo) {
+          importFileInfo.textContent = `Selected file: ${selectedImportFile.name} (${(selectedImportFile.size / 1024).toFixed(2)} KB)`;
+          importFileInfo.style.display = 'block';
+        }
+        console.log(`File selected: ${selectedImportFile.name}, Size: ${selectedImportFile.size} bytes`);
+      } else {
+        if (importFileInfo) {
+          importFileInfo.style.display = 'none';
+        }
+      }
+    });
+  }
+}
+
+/**
+ * Initialize authentication module
+ */
+export function init() {
+  setupLoginListener();
+  setupLogoutListener();
+  setupRegisterListener();
+  setupAccountButtons();
+  setupImportDialog();
+  
+  // Check if user is already authenticated
+  const authData = loadAuthData();
+  if (authData && authData.userId) {
+    // User is already authenticated
+    isAuthenticated = true;
+    return true;
+  }
+  
+  return false;
 }
 
 // Export auth module
