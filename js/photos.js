@@ -4,7 +4,9 @@ import {
   saveDatabase, 
   decryptData, 
   encryptData, 
-  getEncryptionKey 
+  getEncryptionKey,
+  saveToSecureStorage,
+  loadFromLocalStorage
 } from './database.js';
 
 // Current state
@@ -20,7 +22,17 @@ export function initializePhotoManager(appState) {
   const photosContainer = document.getElementById('photos-container');
   const viewOptions = document.querySelectorAll('.view-option');
   
-
+  // Load data from secure storage if encryption key is available
+  const encryptionKey = getEncryptionKey();
+  if (encryptionKey) {
+    // Use loadFromLocalStorage as a transition helper
+    // This will eventually be replaced with a direct load from the secure database
+    const data = loadFromLocalStorage();
+    if (data) {
+      db = data;
+      console.log('Loaded data from secure storage for photos');
+    }
+  }
   
   // Initialize database structure if needed
   if (!db) {
@@ -100,16 +112,16 @@ async function uploadPhotos(fileList) {
   const results = await Promise.all(promises);
   const successCount = results.filter(result => result).length;
   
-  // Save to database
+  // Save to secure database only
   try {
-    // Then encrypt and save to secure storage if encryption key is available
+    // Get encryption key
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      const encrypted = encryptData(db);
-      if (encrypted) {
-        await saveDatabase();
-        console.log('Saved photos to secure database');
-      }
+      // Save to secure storage
+      await saveToSecureStorage(db);
+      console.log('Saved photos to secure database');
+    } else {
+      throw new Error("Encryption key not available");
     }
   } catch (error) {
     console.error('Failed to save photos:', error);
@@ -135,6 +147,12 @@ async function processPhoto(file) {
     reader.onload = async (e) => {
       img.onload = async () => {
         try {
+          // Optimize the original image if it's very large
+          let optimizedContent = e.target.result;
+          if (file.size > 2 * 1024 * 1024) { // If larger than 2MB
+            optimizedContent = await optimizeImage(img, 1600); // Max width/height 1600px
+          }
+          
           // Create a photo object
           const photoObj = {
             id: generateId(),
@@ -144,8 +162,8 @@ async function processPhoto(file) {
             width: img.width,
             height: img.height,
             contentType: file.type,
-            content: e.target.result, // Full-size image
-            thumbnail: await createThumbnail(img), // Create thumbnail
+            content: optimizedContent, // Optimized image if needed
+            thumbnail: await createThumbnail(img, 200, 200, 0.7), // Create thumbnail with quality 0.7
             created: new Date().toISOString(),
             modified: new Date().toISOString()
           };
@@ -177,8 +195,8 @@ async function processPhoto(file) {
   });
 }
 
-// Create a thumbnail
-async function createThumbnail(img, maxWidth = 200, maxHeight = 200) {
+// Create a thumbnail with specified quality
+async function createThumbnail(img, maxWidth = 200, maxHeight = 200, quality = 0.7) {
   return new Promise((resolve) => {
     // Create a canvas element
     const canvas = document.createElement('canvas');
@@ -207,10 +225,59 @@ async function createThumbnail(img, maxWidth = 200, maxHeight = 200) {
     // Draw the image on the canvas
     ctx.drawImage(img, 0, 0, width, height);
     
-    // Get the data URL from the canvas
-    const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    // Get the data URL from the canvas with specified quality
+    const thumbnailDataUrl = canvas.toDataURL('image/jpeg', quality);
     
     resolve(thumbnailDataUrl);
+  });
+}
+
+// Optimize an image by resizing it if needed
+async function optimizeImage(img, maxDimension = 1600, quality = 0.85) {
+  return new Promise((resolve) => {
+    // Check if image needs optimization
+    if (img.width <= maxDimension && img.height <= maxDimension) {
+      // Create a canvas with original dimensions but optimize quality
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, img.width, img.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+      return;
+    }
+    
+    // Create a canvas element
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Calculate new dimensions while maintaining aspect ratio
+    let width = img.width;
+    let height = img.height;
+    
+    if (width > height) {
+      if (width > maxDimension) {
+        height = Math.round(height * maxDimension / width);
+        width = maxDimension;
+      }
+    } else {
+      if (height > maxDimension) {
+        width = Math.round(width * maxDimension / height);
+        height = maxDimension;
+      }
+    }
+    
+    // Set canvas dimensions
+    canvas.width = width;
+    canvas.height = height;
+    
+    // Draw the image on the canvas
+    ctx.drawImage(img, 0, 0, width, height);
+    
+    // Get the data URL from the canvas
+    const optimizedDataUrl = canvas.toDataURL('image/jpeg', quality);
+    
+    resolve(optimizedDataUrl);
   });
 }
 
@@ -316,17 +383,14 @@ function deletePhoto(photo) {
     // Remove from database
     delete db.photos[photo.id];
     
-    // Save database
-    localStorage.setItem('markdown_vault_data', JSON.stringify(db));
-    
-    // Save to secure database if encryption key is available
+    // Save to secure database only
     const encryptionKey = getEncryptionKey();
     if (encryptionKey) {
-      const encrypted = encryptData(db);
-      if (encrypted) {
-        saveDatabase();
-        console.log('Saved changes to secure database after photo deletion');
-      }
+      // Save to secure storage
+      saveToSecureStorage(db);
+      console.log('Saved changes to secure database after photo deletion');
+    } else {
+      throw new Error("Encryption key not available");
     }
     
     // Update gallery
