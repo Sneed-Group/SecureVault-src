@@ -1,11 +1,21 @@
 {
-  "name": "securevault",
+  "name": "markdown-vault",
   "version": "1.0.0",
-  "description": "Secure, local, encrypted document and file storage",
-  "main": "server.js",
+  "description": "A Progressive Web App for Markdown editing with encrypted local storage",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
-  "author": "",
-  "license": "SEE LICENSE IN LICENSE"
+  "dependencies": {
+    "crypto-js": "^4.1.1",
+    "dexie": "^3.2.3",
+    "marked": "^5.0.2",
+    "highlight.js": "^11.7.0"
+  },
+  "devDependencies": {
+    "vite": "^4.3.9",
+    "workbox-cli": "^6.5.4"
+  }
 } 

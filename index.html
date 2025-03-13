@@ -1,187 +1,239 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#4285f4">
-    <title>SecureVault - Secure Document & File Storage</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="icons/favicon.ico" type="image/x-icon">
-    <!-- SimpleMDE for Markdown editing -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
-    <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
-    <!-- CryptoJS for encryption -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Secure Markdown editor with encrypted local storage">
+  <title>Markdown Vault</title>
+  <link rel="stylesheet" href="./styles/main.css">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./images/icons/favicon.ico" type="image/x-icon">
+  <meta name="theme-color" content="#2c3e50">
 </head>
 <body>
-    <header>
-        <h1>SecureVault</h1>
-        <nav>
-            <ul>
-                <li><button id="nav-docs" class="nav-button active">Docs</button></li>
-                <li><button id="nav-photos" class="nav-button">Photos</button></li>
-                <li><button id="nav-files" class="nav-button">Files</button></li>
-            </ul>
-        </nav>
-        <div class="auth-controls">
-            <button id="btn-load">Load DB</button>
-            <button id="btn-save">Save DB</button>
-            <button id="btn-lock" class="hidden">Lock</button>
+  <div id="app">
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="screen active">
+      <div class="auth-container">
+        <h1>Markdown Vault</h1>
+        <p>Secure document editing with encrypted storage</p>
+        
+        <div id="password-form">
+          <div class="form-group">
+            <label for="password">Enter your password</label>
+            <input type="password" id="password" placeholder="Password">
+          </div>
+          <div id="new-user-fields" style="display:none;">
+            <div class="form-group">
+              <label for="confirm-password">Confirm password</label>
+              <input type="password" id="confirm-password" placeholder="Confirm password">
+            </div>
+            <p class="info-text">This password will be used to encrypt your data. It cannot be recovered if lost.</p>
+          </div>
+          <div class="form-actions">
+            <button id="unlock-btn" class="btn primary">Unlock Vault</button>
+            <button id="import-db-btn" class="btn secondary">Import Database</button>
+          </div>
+          <p id="auth-message" class="message"></p>
         </div>
-    </header>
-
-    <main>
-        <!-- Auth Section -->
-        <section id="section-auth" class="section active">
-            <div class="container">
-                <h2>Welcome to SecureVault</h2>
-                <p>Secure, local, encrypted document and file storage</p>
-                
-                <div class="auth-form">
-                    <div class="form-group">
-                        <label for="password">Password</label>
-                        <input type="password" id="password" placeholder="Enter your encryption password">
-                    </div>
-                    
-                    <div class="auth-buttons">
-                        <button id="btn-create-new">Create New Database</button>
-                        <div class="or-divider">OR</div>
-                        <div class="file-upload-wrapper">
-                            <label for="db-file">Load Existing Database</label>
-                            <input type="file" id="db-file" accept=".securevault">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Docs Section -->
-        <section id="section-docs" class="section hidden">
-            <div class="container">
-                <div class="sidebar">
-                    <div class="sidebar-header">
-                        <h3>Documents</h3>
-                        <button id="btn-new-doc" class="btn-new">+ New</button>
-                    </div>
-                    <ul id="docs-list" class="items-list">
-                        <!-- Document items will be inserted here -->
-                    </ul>
-                </div>
-                <div class="content">
-                    <div class="content-header">
-                        <input type="text" id="doc-title" placeholder="Untitled Document">
-                        <button id="btn-save-doc">Save</button>
-                    </div>
-                    <div class="editor-container">
-                        <textarea id="markdown-editor"></textarea>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Photos Section -->
-        <section id="section-photos" class="section hidden">
-            <div class="container">
-                <div class="sidebar">
-                    <div class="sidebar-header">
-                        <h3>Photos</h3>
-                        <button id="btn-new-photo" class="btn-new">+ Add</button>
-                    </div>
-                    <ul id="photos-list" class="items-list">
-                        <!-- Photo items will be inserted here -->
-                    </ul>
-                </div>
-                <div class="content">
-                    <div class="photo-viewer">
-                        <img id="photo-display" src="" alt="">
-                        <div class="photo-info">
-                            <input type="text" id="photo-title" placeholder="Untitled Photo">
-                            <button id="btn-save-photo">Save</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Files Section -->
-        <section id="section-files" class="section hidden">
-            <div class="container">
-                <div class="sidebar">
-                    <div class="sidebar-header">
-                        <h3>Files</h3>
-                        <button id="btn-new-file" class="btn-new">+ Add</button>
-                    </div>
-                    <ul id="files-list" class="items-list">
-                        <!-- File items will be inserted here -->
-                    </ul>
-                </div>
-                <div class="content">
-                    <div class="file-viewer">
-                        <div class="file-info">
-                            <input type="text" id="file-title" placeholder="Untitled File">
-                            <div class="file-metadata">
-                                <span id="file-type"></span>
-                                <span id="file-size"></span>
-                            </div>
-                            <button id="btn-save-file">Save</button>
-                            <button id="btn-download-file">Download</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <!-- Modals -->
-    <div id="modal-overlay" class="hidden">
-        <div id="modal-container">
-            <div id="modal-new-item" class="modal hidden">
-                <h3>Create New Item</h3>
-                <div class="form-group">
-                    <label for="new-item-title">Title</label>
-                    <input type="text" id="new-item-title" placeholder="Enter title">
-                </div>
-                <div class="form-group file-input-group hidden">
-                    <label for="new-item-file">Select File</label>
-                    <input type="file" id="new-item-file">
-                </div>
-                <div class="modal-buttons">
-                    <button id="btn-modal-cancel">Cancel</button>
-                    <button id="btn-modal-create">Create</button>
-                </div>
-            </div>
-
-            <div id="modal-password" class="modal hidden">
-                <h3>Enter Password</h3>
-                <div class="form-group">
-                    <label for="modal-password-input">Password</label>
-                    <input type="password" id="modal-password-input" placeholder="Enter your encryption password">
-                </div>
-                <div class="modal-buttons">
-                    <button id="btn-modal-password-cancel">Cancel</button>
-                    <button id="btn-modal-password-confirm">Confirm</button>
-                </div>
-            </div>
-
-            <div id="modal-save-db" class="modal hidden">
-                <h3>Save Database</h3>
-                <p>Your database will be saved as an encrypted file.</p>
-                <div class="form-group">
-                    <label for="save-password">Confirm Password</label>
-                    <input type="password" id="save-password" placeholder="Enter your encryption password">
-                </div>
-                <div class="modal-buttons">
-                    <button id="btn-modal-save-cancel">Cancel</button>
-                    <button id="btn-modal-save-confirm">Save Database</button>
-                </div>
-            </div>
-        </div>
+      </div>
     </div>
 
-    <script src="js/crypto.js"></script>
-    <script src="js/storage.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/app.js"></script>
+    <!-- Main App Screen -->
+    <div id="main-screen" class="screen">
+      <header>
+        <div class="logo">
+          <h1>Markdown Vault</h1>
+        </div>
+        <nav>
+          <ul class="nav-tabs">
+            <li data-section="docs" class="active">Docs</li>
+            <li data-section="photos">Photos</li>
+            <li data-section="files">Files</li>
+          </ul>
+        </nav>
+        <div class="actions">
+          <button id="search-btn" class="btn icon-btn" title="Search">
+            <span class="icon">🔍</span>
+          </button>
+          <button id="settings-btn" class="btn icon-btn" title="Settings">
+            <span class="icon">⚙️</span>
+          </button>
+        </div>
+      </header>
+      
+      <main>
+        <!-- Sidebar with file listings -->
+        <aside id="sidebar">
+          <div class="sidebar-header">
+            <button id="create-new-btn" class="btn primary">New</button>
+            <div class="search-container">
+              <input type="text" id="search-files" placeholder="Search...">
+            </div>
+          </div>
+          <div id="file-list"></div>
+        </aside>
+        
+        <!-- Content area -->
+        <section id="content-area">
+          <!-- Docs Section -->
+          <div id="docs-section" class="content-section active">
+            <div class="editor-container">
+              <div class="editor-toolbar">
+                <div class="format-tools">
+                  <button class="tool-btn" data-format="bold" title="Bold (Ctrl+B)">B</button>
+                  <button class="tool-btn" data-format="italic" title="Italic (Ctrl+I)">I</button>
+                  <button class="tool-btn" data-format="heading" title="Heading">H</button>
+                  <button class="tool-btn" data-format="link" title="Link">🔗</button>
+                  <button class="tool-btn" data-format="list" title="List">•</button>
+                  <button class="tool-btn" data-format="code" title="Code">{}</button>
+                </div>
+                <div class="view-tools">
+                  <button id="edit-mode-btn" class="view-btn active" title="Edit mode">Edit</button>
+                  <button id="split-mode-btn" class="view-btn" title="Split mode">Split</button>
+                  <button id="preview-mode-btn" class="view-btn" title="Preview mode">Preview</button>
+                </div>
+                <div class="doc-actions">
+                  <button id="save-doc-btn" class="btn primary" title="Save">Save</button>
+                </div>
+              </div>
+              <div class="editor-content">
+                <div id="editor">
+                  <textarea id="markdown-editor" placeholder="Start writing in Markdown..."></textarea>
+                </div>
+                <div id="preview" class="markdown-preview"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Photos Section -->
+          <div id="photos-section" class="content-section">
+            <div class="photos-toolbar">
+              <button id="upload-photo-btn" class="btn primary">Upload Photos</button>
+              <div class="view-options">
+                <button class="view-option active" data-view="grid">Grid</button>
+                <button class="view-option" data-view="list">List</button>
+              </div>
+            </div>
+            <div class="photos-gallery">
+              <div id="photos-container" class="grid-view"></div>
+            </div>
+          </div>
+          
+          <!-- Files Section -->
+          <div id="files-section" class="content-section">
+            <div class="files-toolbar">
+              <button id="upload-file-btn" class="btn primary">Upload Files</button>
+              <div class="sort-options">
+                <select id="sort-files">
+                  <option value="name">Name</option>
+                  <option value="date">Date</option>
+                  <option value="size">Size</option>
+                  <option value="type">Type</option>
+                </select>
+              </div>
+            </div>
+            <div id="files-container" class="files-list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="settings-section">
+            <h3>Security</h3>
+            <div class="form-group">
+              <button id="change-password-btn" class="btn secondary">Change Password</button>
+              <button id="export-db-btn" class="btn secondary">Export Database</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Appearance</h3>
+            <div class="form-group">
+              <label for="theme-select">Theme</label>
+              <select id="theme-select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="system">System Default</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Editor</h3>
+            <div class="form-group">
+              <label for="font-size">Font Size</label>
+              <select id="font-size">
+                <option value="small">Small</option>
+                <option value="medium" selected>Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>About</h3>
+            <p>Markdown Vault v1.0.0</p>
+            <p>A secure Markdown editor with encrypted local storage</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Password Change Modal -->
+    <div id="password-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Change Password</h2>
+          <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="current-password">Current Password</label>
+            <input type="password" id="current-password" placeholder="Current password">
+          </div>
+          <div class="form-group">
+            <label for="new-password">New Password</label>
+            <input type="password" id="new-password" placeholder="New password">
+          </div>
+          <div class="form-group">
+            <label for="confirm-new-password">Confirm New Password</label>
+            <input type="password" id="confirm-new-password" placeholder="Confirm new password">
+          </div>
+          <div class="form-actions">
+            <button id="save-password-btn" class="btn primary">Save New Password</button>
+          </div>
+          <p id="password-message" class="message"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- File Upload Input (hidden) -->
+    <input type="file" id="file-upload" multiple style="display:none;">
+    <input type="file" id="photo-upload" accept="image/*" multiple style="display:none;">
+    <input type="file" id="db-import" accept=".json" style="display:none;">
+  </div>
+
+  <!-- Scripts -->
+  <script type="module" src="./js/app.js"></script>
+  <script>
+    // Register service worker for PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then(registration => {
+            console.log('Service Worker registered:', registration);
+          })
+          .catch(error => {
+            console.log('Service Worker registration failed:', error);
+          });
+      });
+    }
+  </script>
 </body>
 </html> 
