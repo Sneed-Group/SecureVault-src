@@ -526,7 +526,7 @@ export function initializeAuth() {
       }
       
       if (!password) {
-        showAuthMessage('Please enter a password', 'error');
+        showAuthMessage('Please enter your vault login password', 'error');
         return;
       }
       
@@ -569,7 +569,7 @@ export function initializeAuth() {
           window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
         } else {
           // Keep the modal open but show error
-          showAuthMessage('Error importing vault. Invalid password or corrupted file. Please try again.', 'error');
+          showAuthMessage('Error importing vault. Invalid vault login password or corrupted file. Please try again.', 'error');
           
           // Reset password field to allow another attempt
           const passwordInput = document.getElementById('import-password');
@@ -580,7 +580,7 @@ export function initializeAuth() {
           
           // Add a hint about the password
           const passHint = document.createElement('p');
-          passHint.innerHTML = 'Hint: Make sure you\'re using the same password that was used to export the vault.';
+          passHint.innerHTML = 'Hint: Use the same password you use to unlock your vault.';
           passHint.className = 'import-password-hint';
           passHint.style.color = 'var(--warning-color)';
           passHint.style.fontSize = 'small';
@@ -817,8 +817,20 @@ function setupImportDialog() {
     hintElement.style.marginTop = '5px';
     hintElement.style.color = 'var(--text-secondary)';
     hintElement.style.display = 'none';
-    hintElement.textContent = 'Make sure this is the password you used when exporting the vault.';
+    hintElement.textContent = 'Enter your vault login password (the password you use to unlock your vault).';
     importPassword.parentNode.appendChild(hintElement);
+  }
+  
+  // Add a label to clearly indicate this is the vault password
+  const passwordLabel = importPassword.previousElementSibling;
+  if (passwordLabel && passwordLabel.tagName === 'LABEL') {
+    passwordLabel.textContent = 'Vault Password:';
+  } else {
+    // Create a label if it doesn't exist
+    const newLabel = document.createElement('label');
+    newLabel.htmlFor = 'import-password';
+    newLabel.textContent = 'Vault Password:';
+    importPassword.parentNode.insertBefore(newLabel, importPassword);
   }
   
   // Store selected import file
@@ -841,7 +853,7 @@ function setupImportDialog() {
     
     const password = importPassword.value;
     if (!password) {
-      importMessage.textContent = "Please enter your password";
+      importMessage.textContent = "Please enter your vault password";
       importMessage.className = "error-message";
       // Show the password hint
       const hintElement = document.getElementById('import-password-hint');
@@ -879,7 +891,7 @@ function setupImportDialog() {
       }, 1500);
     } else {
       console.log("Import failed");
-      importMessage.textContent = "Invalid password or corrupt file. Please try again.";
+      importMessage.textContent = "Invalid vault password or corrupt file. Please try again.";
       importMessage.className = "error-message";
       
       // Reset password field for another attempt
@@ -918,6 +930,10 @@ function setupImportDialog() {
           importFileInfo.style.display = 'block';
         }
         console.log(`File selected: ${selectedImportFile.name}, Size: ${selectedImportFile.size} bytes`);
+        
+        // Always show the password hint when a file is selected
+        const hintElement = document.getElementById('import-password-hint');
+        if (hintElement) hintElement.style.display = 'block';
       } else {
         if (importFileInfo) {
           importFileInfo.style.display = 'none';

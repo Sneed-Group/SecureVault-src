@@ -195,7 +195,8 @@ export async function saveToSecureStorage(data, downloadFile = false) {
     };
     console.log(`Saving vault data with: ${dataSize.docs} docs, ${dataSize.files} files, ${dataSize.photos} photos`);
     
-    // Encrypt the data
+    // Encrypt the data using the vault login key
+    console.log("Encrypting data with vault login key");
     const encryptedData = encryptData(mergedData);
     if (!encryptedData) {
       throw new Error("Failed to encrypt data");
@@ -209,7 +210,8 @@ export async function saveToSecureStorage(data, downloadFile = false) {
       data: encryptedData,
       encryptionInfo: {
         method: "pbkdf2",
-        saltUsed: true
+        saltUsed: true,
+        note: "Encrypted with vault login password"
       }
     };
     
@@ -374,7 +376,7 @@ export function readVaultFile(file) {
 /**
  * Import database with password
  * @param {File} file The imported file
- * @param {string} password The password to decrypt the file
+ * @param {string} password The vault login password to decrypt the file
  * @returns {Promise<boolean>} True if import was successful
  */
 export async function importDatabaseWithPassword(file, password) {
@@ -413,21 +415,9 @@ export async function importDatabaseWithPassword(file, password) {
       throw new Error("Invalid vault file format - missing required fields");
     }
     
-    console.log("Attempting to decrypt the vault...");
+    console.log("Attempting to decrypt the vault with login password");
     
-    // Check for encryption info in the vault file
-    let encryptionMethod = "pbkdf2"; // Default method
-    let saltUsed = true;
-    
-    if (vaultFileObj.encryptionInfo) {
-      encryptionMethod = vaultFileObj.encryptionInfo.method || encryptionMethod;
-      saltUsed = vaultFileObj.encryptionInfo.saltUsed !== false; // Default to true
-      console.log(`Vault file specifies encryption method: ${encryptionMethod}, salt used: ${saltUsed}`);
-    } else {
-      console.log("No encryption info in vault file, trying default methods");
-    }
-    
-    // Try multiple approaches to decrypt
+    // Try multiple approaches to decrypt using the login password
     let decryptedData = null;
     let decryptionSuccessful = false;
     let usedKey = null;
@@ -440,7 +430,7 @@ export async function importDatabaseWithPassword(file, password) {
       try {
         decryptedData = decryptData(vaultFileObj.data);
         if (decryptedData && typeof decryptedData === 'object') {
-          console.log("Decryption successful using default salt");
+          console.log("Decryption successful using vault login password with default salt");
           decryptionSuccessful = true;
           usedKey = key1;
         }
@@ -458,7 +448,7 @@ export async function importDatabaseWithPassword(file, password) {
         try {
           decryptedData = decryptData(vaultFileObj.data);
           if (decryptedData && typeof decryptedData === 'object') {
-            console.log("Decryption successful using no salt");
+            console.log("Decryption successful using vault login password with no salt");
             decryptionSuccessful = true;
             usedKey = key2;
           }
@@ -475,7 +465,7 @@ export async function importDatabaseWithPassword(file, password) {
       try {
         decryptedData = decryptData(vaultFileObj.data);
         if (decryptedData && typeof decryptedData === 'object') {
-          console.log("Decryption successful using password directly");
+          console.log("Decryption successful using vault login password directly");
           decryptionSuccessful = true;
           usedKey = password;
         }
@@ -484,26 +474,9 @@ export async function importDatabaseWithPassword(file, password) {
       }
     }
     
-    // Attempt 4: Try with SHA-256 of password
-    if (!decryptionSuccessful) {
-      console.log("Attempt 4: Trying to decrypt with SHA-256 of password");
-      const key4 = CryptoJS.SHA256(password).toString();
-      setEncryptionKey(key4);
-      try {
-        decryptedData = decryptData(vaultFileObj.data);
-        if (decryptedData && typeof decryptedData === 'object') {
-          console.log("Decryption successful using SHA-256 of password");
-          decryptionSuccessful = true;
-          usedKey = key4;
-        }
-      } catch (e) {
-        console.log("Decryption failed with SHA-256 of password:", e);
-      }
-    }
-    
     if (!decryptionSuccessful) {
       console.error("All decryption attempts failed - invalid password or corrupt file");
-      throw new Error("Invalid password or corrupt file");
+      throw new Error("Invalid vault login password or corrupt file");
     }
     
     // Set the vault file only after successful decryption
@@ -595,22 +568,11 @@ export async function exportDatabase() {
       `${Object.keys(mergedData.files).length} files, ` + 
       `${Object.keys(mergedData.photos).length} photos`);
     
-    // Store current encryptionKey to restore later
-    const originalKey = encryptionKey;
-    
-    // Set the current encryption key for the export
-    // This ensures the export and import process use the same key derivation
-    let currentSessionKey = sessionStorage.getItem('sessionKey');
-    if (currentSessionKey) {
-      console.log("Using session key for export");
-      setEncryptionKey(currentSessionKey);
-    }
+    // Always use the current session key for export (this is the login password's derived key)
+    // No need to store/restore because we want to use the current login key
     
     // Use saveToSecureStorage with the merged data and download flag set to true
     const result = await saveToSecureStorage(mergedData, true);
-    
-    // Restore original key
-    setEncryptionKey(originalKey);
     
     return result;
   } catch (error) {
