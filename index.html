@@ -148,6 +148,7 @@
           <button class="close-modal">&times;</button>
         </div>
         <div class="modal-body">
+          <p id="import-file-name" class="import-file-info"></p>
           <p>Enter the password for this vault:</p>
           <div class="form-group">
             <input type="password" id="import-password" placeholder="Vault password">
@@ -238,7 +239,8 @@
     <!-- File Upload Input (hidden) -->
     <input type="file" id="file-upload" multiple style="display:none;">
     <input type="file" id="photo-upload" accept="image/*" multiple style="display:none;">
-    <input type="file" id="db-import" accept=".json" style="display:none;">
+    <input type="file" id="db-import" accept=".vault,.json" style="display:none;">
+    <input type="file" id="import-file-input" accept=".vault,.json" style="display:none;">
   </div>
 
   <!-- Scripts -->

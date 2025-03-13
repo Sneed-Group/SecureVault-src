@@ -311,9 +311,18 @@ export async function downloadVaultFile(jsonData) {
  */
 export function readVaultFile(file) {
   return new Promise((resolve, reject) => {
+    if (!file) {
+      console.error("Error reading vault file: No file provided");
+      reject(new Error("No file provided"));
+      return;
+    }
+    
+    console.log(`Reading vault file: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
+    
     const reader = new FileReader();
     
     reader.onload = (event) => {
+      console.log(`File read complete, content length: ${event.target.result.length}`);
       resolve(event.target.result);
     };
     
@@ -322,6 +331,7 @@ export function readVaultFile(file) {
       reject(error);
     };
     
+    // Read the file as text
     reader.readAsText(file);
   });
 }
@@ -334,37 +344,77 @@ export function readVaultFile(file) {
  */
 export async function importDatabaseWithPassword(file, password) {
   try {
+    if (!file) {
+      console.error("Import error: No file provided");
+      return false;
+    }
+
+    console.log(`Attempting to import file: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
+    
     // Read the file
     const fileContent = await readVaultFile(file);
     if (!fileContent) {
+      console.error("Failed to read vault file contents");
       throw new Error("Failed to read vault file");
     }
     
+    console.log(`File content read successfully, length: ${fileContent.length} characters`);
+    
     // Parse the JSON
-    const vaultFileObj = JSON.parse(fileContent);
+    let vaultFileObj;
+    try {
+      vaultFileObj = JSON.parse(fileContent);
+      console.log("File JSON parsed successfully");
+    } catch (parseError) {
+      console.error("Error parsing file JSON:", parseError);
+      throw new Error("Invalid vault file format - not valid JSON");
+    }
     
     // Validate the file format
-    if (vaultFileObj.type !== 'secure-vault' || !vaultFileObj.data) {
-      throw new Error("Invalid vault file format");
+    if (!vaultFileObj || vaultFileObj.type !== 'secure-vault' || !vaultFileObj.data) {
+      console.error("Invalid vault file structure:", vaultFileObj ? 
+        `type: ${vaultFileObj.type}, has data: ${!!vaultFileObj.data}` : 
+        "undefined object");
+      throw new Error("Invalid vault file format - missing required fields");
     }
     
     // Derive key from password
     const key = deriveKeyFromPassword(password);
     if (!key) {
+      console.error("Failed to derive key from provided password");
       throw new Error("Failed to derive key from password");
     }
     
     // Set the encryption key
     setEncryptionKey(key);
+    console.log("Encryption key set successfully");
     
     // Set the vault file
     setVaultFile(file);
+    console.log("Vault file set successfully");
     
     // Try to decrypt
     const decryptedData = decryptData(vaultFileObj.data);
     if (!decryptedData) {
+      console.error("Failed to decrypt vault data with provided password");
       throw new Error("Failed to decrypt vault data - incorrect password");
     }
+    
+    console.log("Vault data decrypted successfully");
+    
+    // Check and initialize data structure if needed
+    if (!decryptedData.docs) decryptedData.docs = {};
+    if (!decryptedData.files) decryptedData.files = {};
+    if (!decryptedData.photos) decryptedData.photos = {};
+    
+    // Log stats about the imported data
+    const stats = {
+      docs: Object.keys(decryptedData.docs).length,
+      files: Object.keys(decryptedData.files).length,
+      photos: Object.keys(decryptedData.photos).length
+    };
+    
+    console.log(`Imported vault data statistics: ${stats.docs} docs, ${stats.files} files, ${stats.photos} photos`);
     
     // Store the decrypted data
     vaultData = decryptedData;

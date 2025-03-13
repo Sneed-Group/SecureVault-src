@@ -104,14 +104,35 @@ function initializeSettings() {
   // Handle import database button click
   if (importDbBtn && importFileInput) {
     importDbBtn.addEventListener('click', () => {
+      // Clear any previous imports
+      if (importFileInput) {
+        importFileInput.value = ''; // Reset the file input
+      }
       importFileInput.click();
     });
     
     importFileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
+        console.log(`File selected for import: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
+        
         // Show import confirmation modal
-        document.getElementById('import-modal').classList.add('active');
+        const importModal = document.getElementById('import-modal');
+        if (importModal) {
+          // Clear any previous password entry
+          const passwordInput = document.getElementById('import-password');
+          if (passwordInput) {
+            passwordInput.value = '';
+          }
+          
+          // Display the file name
+          const fileNameDisplay = document.getElementById('import-file-name');
+          if (fileNameDisplay) {
+            fileNameDisplay.textContent = `Selected file: ${file.name}`;
+          }
+          
+          importModal.classList.add('active');
+        }
       }
     });
   }

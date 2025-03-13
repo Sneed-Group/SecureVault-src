@@ -479,11 +479,15 @@ export function initializeAuth() {
   }
   
   // Handle file input change (if present)
+  let selectedImportFile = null; // Store the selected file for import
+  
   if (importFileInput) {
     importFileInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
+      selectedImportFile = e.target.files[0]; // Store the selected file
       
-      if (!file) return;
+      if (!selectedImportFile) return;
+      
+      console.log('Import file selected:', selectedImportFile.name);
       
       // Show password modal for importing
       const importModal = document.getElementById('import-modal');
@@ -509,16 +513,14 @@ export function initializeAuth() {
   if (importConfirmBtn) {
     importConfirmBtn.addEventListener('click', async () => {
       console.log('Import confirmation button clicked');
-      const importFileInput = document.getElementById('db-import');
-      console.log('Import file input found:', !!importFileInput);
       
-      // Get the file and password
-      const file = importFileInput ? importFileInput.files[0] : null;
-      console.log('File selected:', !!file);
+      // Use the stored selected file instead of trying to get it from db-import
+      console.log('Selected file for import:', selectedImportFile ? selectedImportFile.name : 'None');
+      
       const password = document.getElementById('import-password').value.trim();
       
       // Validate
-      if (!file) {
+      if (!selectedImportFile) {
         showAuthMessage('Please select a vault file', 'error');
         return;
       }
@@ -528,16 +530,31 @@ export function initializeAuth() {
         return;
       }
       
+      // Show processing message
+      showAuthMessage('Processing vault file...', 'info');
+      
       // Disable button during import
       importConfirmBtn.disabled = true;
       importConfirmBtn.textContent = 'Importing...';
       
       try {
+        // Ensure the file has the right extension
+        const fileName = selectedImportFile.name.toLowerCase();
+        if (!fileName.endsWith('.vault') && !fileName.endsWith('.json')) {
+          showAuthMessage('Selected file must be a .vault file', 'error');
+          importConfirmBtn.disabled = false;
+          importConfirmBtn.textContent = 'Import';
+          return;
+        }
+        
         // Use the imported function
-        const imported = await importDatabaseWithPassword(file, password);
+        const imported = await importDatabaseWithPassword(selectedImportFile, password);
         console.log('Import result:', imported);
         
         if (imported) {
+          // Clear the stored file reference
+          selectedImportFile = null;
+          
           // Close the modal
           document.getElementById('import-modal').classList.remove('active');
           
@@ -547,6 +564,9 @@ export function initializeAuth() {
           
           // Show success message
           showAuthMessage('Vault imported successfully', 'success');
+          
+          // Dispatch login event to trigger app initialization
+          window.dispatchEvent(new CustomEvent(AUTH_EVENTS.LOGIN));
         } else {
           showAuthMessage('Error importing vault. Invalid password or corrupted file.', 'error');
         }

@@ -227,6 +227,15 @@ ul {
   color: var(--success-color);
 }
 
+.import-file-info {
+  padding: 8px 12px;
+  background-color: rgba(52, 152, 219, 0.1);
+  border-radius: 4px;
+  margin-bottom: var(--spacing-md);
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
 /* Main app screen */
 #main-screen {
   min-height: 100vh;
