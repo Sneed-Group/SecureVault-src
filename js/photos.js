@@ -109,7 +109,7 @@ async function uploadPhotos(fileList) {
     console.log('Saved photos to localStorage');
   } catch (localStorageError) {
     console.error('Failed to save photos to localStorage:', localStorageError);
-    showNotification('Error saving photos: Storage limit may be exceeded', 'error');
+    showNotification('Error saving photos. Please try again.', 'error');
   }
   
   // Render the updated gallery

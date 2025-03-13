@@ -147,6 +147,58 @@ document.addEventListener('DOMContentLoaded', () => {
       savePreferences();
     });
   }
+  
+  // Handle save password button
+  const savePasswordBtn = document.getElementById('save-password-btn');
+  if (savePasswordBtn) {
+    savePasswordBtn.addEventListener('click', () => {
+      const currentPassword = document.getElementById('current-password').value;
+      const newPassword = document.getElementById('new-password').value;
+      const confirmNewPassword = document.getElementById('confirm-new-password').value;
+      const passwordMessage = document.getElementById('password-message');
+      
+      // Validate inputs
+      if (!currentPassword || !newPassword || !confirmNewPassword) {
+        passwordMessage.textContent = 'Please fill in all fields';
+        passwordMessage.className = 'message error';
+        return;
+      }
+      
+      if (newPassword !== confirmNewPassword) {
+        passwordMessage.textContent = 'New passwords do not match';
+        passwordMessage.className = 'message error';
+        return;
+      }
+      
+      // Import the changePassword function
+      import('./auth.js').then(authModule => {
+        const success = authModule.changePassword(currentPassword, newPassword);
+        
+        if (success) {
+          passwordMessage.textContent = 'Password changed successfully';
+          passwordMessage.className = 'message success';
+          
+          // Clear the form
+          document.getElementById('current-password').value = '';
+          document.getElementById('new-password').value = '';
+          document.getElementById('confirm-new-password').value = '';
+          
+          // Close the modal after a delay
+          setTimeout(() => {
+            document.getElementById('password-modal').classList.remove('active');
+            passwordMessage.textContent = '';
+          }, 2000);
+        } else {
+          passwordMessage.textContent = 'Failed to change password. Make sure your current password is correct.';
+          passwordMessage.className = 'message error';
+        }
+      }).catch(error => {
+        console.error('Error importing auth module:', error);
+        passwordMessage.textContent = 'An error occurred. Please try again.';
+        passwordMessage.className = 'message error';
+      });
+    });
+  }
 });
 
 // Clean up resources when the page is unloaded

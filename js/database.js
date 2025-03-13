@@ -253,30 +253,24 @@ export async function saveDatabase() {
  * @returns {boolean} True if export was successful
  */
 export async function exportDatabase() {
-  if (!dbInitialized) {
-    console.error("Database not initialized");
-    return false;
-  }
-  
-  if (!encryptionKey) {
-    console.error("Encryption key not set");
-    return false;
-  }
-  
   try {
-    // Save the database to encrypted data
-    const encryptedData = await saveDatabase();
-    if (!encryptedData) return false;
+    // Get data from localStorage
+    const data = localStorage.getItem('markdown_vault_data');
     
-    // Get metadata
-    const meta = await db.meta.get('metadata');
+    if (!data) {
+      console.error("No data found in localStorage");
+      return false;
+    }
+    
+    // Parse the data to ensure it's valid JSON
+    const parsedData = JSON.parse(data);
     
     // Create the export object
     const exportObj = {
       type: 'markdown-vault-export',
       version: 1,
       timestamp: new Date().toISOString(),
-      data: encryptedData
+      data: parsedData
     };
     
     // Convert to JSON
@@ -304,19 +298,9 @@ export async function exportDatabase() {
 /**
  * Import database from a file
  * @param {File} file - The file to import
- * @returns {boolean} True if import was successful
+ * @returns {Promise<boolean>} True if import was successful
  */
 export async function importDatabase(file) {
-  if (!dbInitialized) {
-    console.error("Database not initialized");
-    return false;
-  }
-  
-  if (!encryptionKey) {
-    console.error("Encryption key not set");
-    return false;
-  }
-  
   try {
     // Read the file
     const reader = new FileReader();
@@ -334,9 +318,11 @@ export async function importDatabase(file) {
             return;
           }
           
-          // Load the database
-          const success = await loadDatabase(importObj.data);
-          resolve(success);
+          // Store the data in localStorage
+          localStorage.setItem('markdown_vault_data', JSON.stringify(importObj.data));
+          
+          console.log("Database imported successfully");
+          resolve(true);
         } catch (error) {
           console.error("Error parsing import file:", error);
           resolve(false);

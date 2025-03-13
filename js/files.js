@@ -95,7 +95,7 @@ async function uploadFiles(fileList) {
     console.log('Saved files to localStorage');
   } catch (localStorageError) {
     console.error('Failed to save files to localStorage:', localStorageError);
-    showNotification('Error saving files: Storage limit may be exceeded', 'error');
+    showNotification('Error saving files. Please try again.', 'error');
   }
   
   // Render the updated file list
