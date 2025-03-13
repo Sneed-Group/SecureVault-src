@@ -1,6 +1,6 @@
-// Service Worker for Markdown Vault PWA
+// Service Worker for SecureVault PWA
 
-const CACHE_NAME = 'markdown-vault-v1';
+const CACHE_NAME = 'secure-vault-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -118,7 +118,7 @@ self.addEventListener('push', event => {
   };
   
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Markdown Vault', options)
+    self.registration.showNotification(data.title || 'SecureVault', options)
   );
 });
 

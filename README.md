@@ -1,13 +1,13 @@
-# Markdown Vault
+# SecureVault
 
-A Progressive Web App (PWA) for Markdown editing with encrypted local storage. This application allows users to securely store documents, photos, and files in an encrypted database that is stored locally on their device.
+A Progressive Web App (PWA) for secure content management with encrypted local storage. This application allows users to securely store documents, photos, and files in an encrypted database that is stored locally on their device.
 
 ## Features
 
-- **Encrypted Local Storage**: All data is stored in an encrypted format using AES-GCM
+- **Encrypted Local Storage**: All data is stored in an encrypted format using AES
 - **Password Protection**: User-provided password for encryption/decryption
 - **Import/Export**: Securely export and import your encrypted database
-- **Markdown Editor**: Full-featured editor with syntax highlighting and preview
+- **Document Editor**: Full-featured editor with syntax highlighting and preview
 - **Media Management**: Store and view photos and other files
 - **Offline Support**: Works without an internet connection
 - **Mobile-Friendly**: Responsive design for all device sizes
@@ -29,7 +29,7 @@ A Progressive Web App (PWA) for Markdown editing with encrypted local storage. T
 ## Usage
 
 1. Set up a password when you first open the app
-2. Create and edit documents using Markdown
+2. Create and edit documents
 3. Upload and manage photos and files
 4. Export your database regularly for backup
 5. Import your database on another device if needed
@@ -39,5 +39,5 @@ A Progressive Web App (PWA) for Markdown editing with encrypted local storage. T
 - Built with vanilla JavaScript, HTML, and CSS
 - Uses CryptoJS for encryption
 - Dexie.js for IndexedDB interaction
-- Marked.js for Markdown rendering
+- Marked.js for content rendering
 - Implements the PWA standard for offline capability 

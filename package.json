@@ -1,7 +1,7 @@
 {
-  "name": "markdown-vault",
+  "name": "secure-vault",
   "version": "1.0.0",
-  "description": "A Progressive Web App for Markdown editing with encrypted local storage",
+  "description": "A Progressive Web App for secure content editing with encrypted local storage",
   "main": "index.js",
   "scripts": {
     "start": "vite",

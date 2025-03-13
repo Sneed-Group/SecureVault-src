@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Markdown Vault - Setup Script
+# SecureVault - Setup Script
 
-echo "Setting up Markdown Vault..."
+echo "Setting up SecureVault..."
 
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then

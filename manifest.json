@@ -1,7 +1,7 @@
 {
-  "name": "Markdown Vault",
-  "short_name": "MDVault",
-  "description": "A secure Markdown editor with encrypted local storage",
+  "name": "SecureVault",
+  "short_name": "SecVault",
+  "description": "A secure vault with encrypted local storage",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
