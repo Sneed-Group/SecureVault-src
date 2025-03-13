@@ -162,7 +162,7 @@ async function processFile(file) {
     
     reader.onload = async (e) => {
       try {
-        // For large files, optimize storage if needed
+        // Get the content as a data URL
         const content = e.target.result;
         
         // Create a file object
@@ -172,10 +172,12 @@ async function processFile(file) {
           type: 'file',
           size: file.size,
           contentType: file.type,
-          content: content,
+          content: content,  // This will be base64 encoded
           created: new Date().toISOString(),
           modified: new Date().toISOString()
         };
+        
+        console.log(`Processing file: ${file.name}, size: ${formatFileSize(file.size)}, type: ${file.type}`);
         
         // Add to database
         db.files[fileObj.id] = fileObj;
@@ -189,10 +191,11 @@ async function processFile(file) {
     };
     
     reader.onerror = (error) => {
+      console.error('Error reading file:', error);
       reject(error);
     };
     
-    // Read the file as a data URL
+    // Read the file as a data URL (base64 encoded)
     reader.readAsDataURL(file);
   });
 }

@@ -114,17 +114,58 @@ export async function saveToSecureStorage(data, downloadFile = false) {
   }
   
   try {
-    // Add metadata to the vault data
-    const vaultObj = {
-      ...data,
-      meta: {
-        version: 1,
-        updatedAt: new Date().toISOString()
+    // First, ensure we're properly merging data
+    let mergedData = {};
+    
+    // Start with existing vault data if available
+    if (vaultData) {
+      // Deep clone the vault data to avoid reference issues
+      mergedData = JSON.parse(JSON.stringify(vaultData));
+    }
+    
+    // Merge in the new data
+    // We need to handle each section carefully to avoid losing data
+    if (data) {
+      // For each section, merge or replace as needed
+      if (data.docs) {
+        mergedData.docs = mergedData.docs || {};
+        Object.assign(mergedData.docs, data.docs);
       }
+      
+      if (data.files) {
+        mergedData.files = mergedData.files || {};
+        Object.assign(mergedData.files, data.files);
+      }
+      
+      if (data.photos) {
+        mergedData.photos = mergedData.photos || {};
+        Object.assign(mergedData.photos, data.photos);
+      }
+      
+      // Handle any other sections in the data
+      for (const key in data) {
+        if (key !== 'docs' && key !== 'files' && key !== 'photos' && key !== 'meta') {
+          mergedData[key] = data[key];
+        }
+      }
+    }
+    
+    // Add metadata
+    mergedData.meta = {
+      version: 1,
+      updatedAt: new Date().toISOString()
     };
     
+    // Log data sizes for debugging
+    const dataSize = {
+      docs: mergedData.docs ? Object.keys(mergedData.docs).length : 0,
+      files: mergedData.files ? Object.keys(mergedData.files).length : 0,
+      photos: mergedData.photos ? Object.keys(mergedData.photos).length : 0
+    };
+    console.log(`Saving vault data with: ${dataSize.docs} docs, ${dataSize.files} files, ${dataSize.photos} photos`);
+    
     // Encrypt the data
-    const encryptedData = encryptData(vaultObj);
+    const encryptedData = encryptData(mergedData);
     if (!encryptedData) {
       throw new Error("Failed to encrypt data");
     }
@@ -145,8 +186,8 @@ export async function saveToSecureStorage(data, downloadFile = false) {
       await downloadVaultFile(jsonData);
     }
     
-    // Update the vault data
-    vaultData = vaultObj;
+    // Update the vault data with our merged data
+    vaultData = mergedData;
     
     console.log("Data saved to secure storage");
     return true;
@@ -170,7 +211,7 @@ export async function loadFromSecureStorage() {
     // If we don't have a vault file, prompt user to select one
     if (!vaultFile) {
       console.log("No vault file loaded yet");
-      return null;
+      return vaultData; // Return current vault data if available
     }
     
     // Read the file
@@ -192,6 +233,19 @@ export async function loadFromSecureStorage() {
     if (!decryptedData) {
       throw new Error("Failed to decrypt vault data");
     }
+    
+    // Make sure all sections exist
+    if (!decryptedData.docs) decryptedData.docs = {};
+    if (!decryptedData.files) decryptedData.files = {};
+    if (!decryptedData.photos) decryptedData.photos = {};
+    
+    // Log data sizes for debugging
+    const dataSize = {
+      docs: decryptedData.docs ? Object.keys(decryptedData.docs).length : 0,
+      files: decryptedData.files ? Object.keys(decryptedData.files).length : 0,
+      photos: decryptedData.photos ? Object.keys(decryptedData.photos).length : 0
+    };
+    console.log(`Loaded vault data with: ${dataSize.docs} docs, ${dataSize.files} files, ${dataSize.photos} photos`);
     
     // Store the decrypted data
     vaultData = decryptedData;
@@ -329,13 +383,39 @@ export async function importDatabaseWithPassword(file, password) {
  */
 export async function exportDatabase() {
   try {
-    if (!vaultData || !encryptionKey) {
-      console.error("No vault data or encryption key available");
+    // Get the current database state
+    if (!encryptionKey) {
+      console.error("No encryption key available");
       return false;
     }
     
-    // Use saveToSecureStorage with download flag set to true
-    return await saveToSecureStorage(vaultData, true);
+    // We need to make sure we're exporting the most up-to-date data
+    // First, trigger an autosave to ensure all modules save their data
+    window.dispatchEvent(new CustomEvent('vault:autosave'));
+    
+    // Wait a moment for the autosave to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Ensure vaultData is populated with all the latest data
+    const mergedData = {};
+    
+    // If we have existing vault data, start with that
+    if (vaultData) {
+      Object.assign(mergedData, vaultData);
+    }
+    
+    // Make sure all sections exist
+    if (!mergedData.docs) mergedData.docs = {};
+    if (!mergedData.files) mergedData.files = {};  
+    if (!mergedData.photos) mergedData.photos = {};
+    
+    console.log("Preparing to export vault with data:", 
+      `${Object.keys(mergedData.docs).length} documents, ` +
+      `${Object.keys(mergedData.files).length} files, ` + 
+      `${Object.keys(mergedData.photos).length} photos`);
+    
+    // Use saveToSecureStorage with the merged data and download flag set to true
+    return await saveToSecureStorage(mergedData, true);
   } catch (error) {
     console.error("Error exporting database:", error);
     return false;

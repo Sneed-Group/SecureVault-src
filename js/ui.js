@@ -77,6 +77,16 @@ function initializeSettings() {
           return;
         }
         
+        // Show a notification that export is starting
+        showNotification('Preparing vault export...', 'info');
+        
+        // First trigger an autosave to ensure all components save their latest data
+        window.dispatchEvent(new CustomEvent('vault:autosave'));
+        
+        // Wait a moment for the autosave to complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Then export the database
         const success = await exportDatabase();
         
         if (success) {
