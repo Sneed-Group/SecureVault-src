@@ -18,5 +18,16 @@
   "devDependencies": {
     "vite": "^4.3.9",
     "workbox-cli": "^6.5.4"
-  }
-} 
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sneed-Group/SecureVault.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sneed-Group/SecureVault/issues"
+  },
+  "homepage": "https://github.com/Sneed-Group/SecureVault#readme"
+}

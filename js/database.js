@@ -11,9 +11,20 @@ let vaultFile = null;
  * @param {string} key - The encryption key to set
  */
 export function setEncryptionKey(key) {
-  if (!key) return false;
-  encryptionKey = key;
-  return true;
+  if (!key) {
+    console.error("Cannot set encryption key: Key is empty or invalid");
+    return false;
+  }
+  
+  try {
+    // Store the key in memory
+    encryptionKey = key;
+    console.log("Encryption key set successfully");
+    return true;
+  } catch (error) {
+    console.error("Error setting encryption key:", error);
+    return false;
+  }
 }
 
 /**
@@ -31,12 +42,20 @@ export function getEncryptionKey() {
  */
 export function deriveKeyFromPassword(password, salt = 'SecureVaultSalt') {
   if (!password) return null;
-  // Use PBKDF2 to derive a strong key from the password
-  const key = CryptoJS.PBKDF2(password, salt, {
-    keySize: 256 / 32,
-    iterations: 10000
-  });
-  return key.toString();
+  
+  try {
+    // Use PBKDF2 to derive a strong key from the password
+    const key = CryptoJS.PBKDF2(password, salt, {
+      keySize: 256 / 32, // 256-bit key
+      iterations: 10000   // Recommended number of iterations
+    });
+    
+    // Return key as Base64 string for consistent format
+    return key.toString(CryptoJS.enc.Base64);
+  } catch (error) {
+    console.error("Error deriving key from password:", error);
+    return null;
+  }
 }
 
 /**
@@ -72,10 +91,17 @@ export function encryptData(data) {
   
   try {
     console.log("Starting encryption process...");
+    // Step 1: Convert data object to JSON string
     const jsonData = JSON.stringify(data);
     console.log(`Data stringified, length: ${jsonData.length} characters`);
     
-    const encrypted = CryptoJS.AES.encrypt(jsonData, encryptionKey);
+    // Step 2: Encrypt using AES with the provided key and explicit configuration
+    const encrypted = CryptoJS.AES.encrypt(jsonData, encryptionKey, {
+      mode: CryptoJS.mode.CBC,
+      padding: CryptoJS.pad.Pkcs7
+    });
+    
+    // Step 3: Convert to string format for storage
     const encryptedString = encrypted.toString();
     console.log(`Data encrypted, result length: ${encryptedString.length} characters`);
     
@@ -87,7 +113,7 @@ export function encryptData(data) {
 }
 
 /**
- * Decrypt data using the encryption key
+ * Decrypt data using the encryption key - handles both old and new encryption formats
  * @param {string} encryptedData - The encrypted data string
  * @returns {Object|null} The decrypted data object, or null if decryption failed
  */
@@ -97,17 +123,40 @@ export function decryptData(encryptedData) {
     return null;
   }
   
+  if (!encryptedData) {
+    console.error("No encrypted data provided for decryption");
+    return null;
+  }
+  
   try {
     console.log("Attempting to decrypt data...");
-    const decrypted = CryptoJS.AES.decrypt(encryptedData, encryptionKey);
     
-    // Check if decryption result is empty
+    // Try decryption with explicit parameters first (new method)
+    let decrypted = CryptoJS.AES.decrypt(encryptedData, encryptionKey, {
+      mode: CryptoJS.mode.CBC,
+      padding: CryptoJS.pad.Pkcs7
+    });
+    
+    // If decryption result is empty, try with default parameters (old method)
+    if (!decrypted || decrypted.sigBytes <= 0) {
+      console.log("First decryption attempt failed, trying legacy method...");
+      decrypted = CryptoJS.AES.decrypt(encryptedData, encryptionKey);
+    }
+    
+    // Check if decryption result is still empty
     if (!decrypted || decrypted.sigBytes <= 0) {
       console.error("Decryption result is empty, likely incorrect key");
       return null;
     }
     
-    const jsonData = decrypted.toString(CryptoJS.enc.Utf8);
+    // Step 2: Convert to UTF-8 string (reverse of JSON.stringify)
+    let jsonData;
+    try {
+      jsonData = decrypted.toString(CryptoJS.enc.Utf8);
+    } catch (utf8Error) {
+      console.error("UTF-8 conversion failed:", utf8Error);
+      return null;
+    }
     
     // Check if resulting string is empty
     if (!jsonData || jsonData.length === 0) {
@@ -115,9 +164,10 @@ export function decryptData(encryptedData) {
       return null;
     }
     
-    // Try to parse the JSON
+    // Step 3: Parse JSON string back to object (reverse of stringification)
     try {
       const parsedData = JSON.parse(jsonData);
+      console.log("Data decrypted and parsed successfully");
       return parsedData;
     } catch (parseError) {
       console.error("Error parsing decrypted JSON:", parseError);
@@ -359,8 +409,9 @@ export function readVaultFile(file) {
     const reader = new FileReader();
     
     reader.onload = (event) => {
-      console.log(`File read complete, content length: ${event.target.result.length}`);
-      resolve(event.target.result);
+      const content = event.target.result;
+      console.log(`File read complete, content length: ${content.length}`);
+      resolve(content);
     };
     
     reader.onerror = (error) => {
@@ -368,7 +419,7 @@ export function readVaultFile(file) {
       reject(error);
     };
     
-    // Read the file as text
+    // Read as text - this is the standard approach for JSON files
     reader.readAsText(file);
   });
 }
@@ -422,61 +473,55 @@ export async function importDatabaseWithPassword(file, password) {
     let decryptionSuccessful = false;
     let usedKey = null;
     
-    // Attempt 1: Try with default salt
-    console.log("Attempt 1: Trying to decrypt with default salt");
-    const key1 = deriveKeyFromPassword(password);
-    if (key1) {
-      setEncryptionKey(key1);
+    // Enhanced key derivation attempts
+    const keys = [
+      // Latest method: Base64 encoded PBKDF2 with default salt
+      { key: deriveKeyFromPassword(password), name: "default salt key (Base64)" },
+      
+      // Legacy method support
+      { key: deriveKeyFromPassword(password, ''), name: "no salt key (Base64)" },
+      
+      // For compatibility with very old files
+      { key: CryptoJS.PBKDF2(password, 'SecureVaultSalt', {
+          keySize: 256 / 32,
+          iterations: 10000
+        }).toString(), name: "legacy default salt key (Hex)" },
+      
+      // Last resort: raw password (not recommended, but kept for backwards compatibility)
+      { key: password, name: "raw password" }
+    ];
+    
+    // Try each key method until one works
+    for (const keyObj of keys) {
+      if (!keyObj.key) continue;
+      
+      console.log(`Trying decryption with ${keyObj.name}`);
+      setEncryptionKey(keyObj.key);
+      
       try {
         decryptedData = decryptData(vaultFileObj.data);
         if (decryptedData && typeof decryptedData === 'object') {
-          console.log("Decryption successful using vault login password with default salt");
+          console.log(`Decryption successful with ${keyObj.name}`);
           decryptionSuccessful = true;
-          usedKey = key1;
+          usedKey = keyObj.key;
+          break;
         }
       } catch (e) {
-        console.log("Decryption failed with default salt:", e);
-      }
-    }
-    
-    // Attempt 2: Try with no salt
-    if (!decryptionSuccessful) {
-      console.log("Attempt 2: Trying to decrypt with no salt");
-      const key2 = deriveKeyFromPassword(password, '');
-      if (key2) {
-        setEncryptionKey(key2);
-        try {
-          decryptedData = decryptData(vaultFileObj.data);
-          if (decryptedData && typeof decryptedData === 'object') {
-            console.log("Decryption successful using vault login password with no salt");
-            decryptionSuccessful = true;
-            usedKey = key2;
-          }
-        } catch (e) {
-          console.log("Decryption failed with no salt:", e);
-        }
-      }
-    }
-    
-    // Attempt 3: Try with password directly
-    if (!decryptionSuccessful) {
-      console.log("Attempt 3: Trying to decrypt with password directly");
-      setEncryptionKey(password);
-      try {
-        decryptedData = decryptData(vaultFileObj.data);
-        if (decryptedData && typeof decryptedData === 'object') {
-          console.log("Decryption successful using vault login password directly");
-          decryptionSuccessful = true;
-          usedKey = password;
-        }
-      } catch (e) {
-        console.log("Decryption failed with direct password:", e);
+        console.log(`Decryption failed with ${keyObj.name}:`, e);
       }
     }
     
     if (!decryptionSuccessful) {
       console.error("All decryption attempts failed - invalid password or corrupt file");
       throw new Error("Invalid vault login password or corrupt file");
+    }
+    
+    // Re-encrypt with the latest method if we used a legacy key
+    if (usedKey !== keys[0].key) {
+      console.log("Decryption used a legacy key method - will re-encrypt with latest method");
+      // Set the encryption key to the latest format for future encryption
+      const latestKey = deriveKeyFromPassword(password);
+      setEncryptionKey(latestKey);
     }
     
     // Set the vault file only after successful decryption
