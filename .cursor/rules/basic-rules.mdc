@@ -15,5 +15,5 @@ alwaysApply: true
 - Comment code well
 - NEVER EVER EDIT .env files
 - Don't change config files unless needed
-- If function line count is above 250, split into multiple smaller functions or refactor
+- If function line count is above 55, split into multiple smaller functions or refactor
 - If file line count above 400 split into more files or refactor
