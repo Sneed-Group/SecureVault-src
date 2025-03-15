@@ -1,7 +1,7 @@
 ---
 description: Basic ruleset for Cursor
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 
 # Basic Rules
