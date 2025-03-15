@@ -1,0 +1,19 @@
+---
+description: Basic ruleset for Cursor
+globs: 
+alwaysApply: false
+---
+
+# Basic Rules
+
+- Always use functional code
+- Always prefer simple, easy-to-understand code
+- Always create a .gitignore file with the build directory in it.
+- Always code what the user specifies and that of which it is obvious that its within the user's specifications
+- If not sure about something, ask the user
+- Keep .gitignore up to date
+- Comment code well
+- NEVER EVER EDIT .env files
+- Don't change config files unless needed
+- If function line count is above 250, split into multiple smaller functions or refactor
+- If file line count above 400 split into more files or refactor
