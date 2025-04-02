@@ -1,6 +1,6 @@
 # SecureVault
 
-A Progressive Web App (PWA) for secure content management with encrypted local storage. This application allows users to securely store documents, photos, and files in an encrypted database that is stored locally on their device.
+A Progressive Web App (PWA) for secure content management with encrypted local storage. This application allows users to securely store documents, photos, and files in an encrypted database that is stored locally on their device. *Good vibes are had by all, I hope!*
 
 ## Features
 
